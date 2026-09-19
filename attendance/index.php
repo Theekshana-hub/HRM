@@ -200,19 +200,19 @@
     <div class="section">
         <div class="section-header"><i class="fas fa-chart-bar" style="margin-right:8px;font-size:12px;"></i>Attendance Reports</div>
         <div class="items-grid">
-            <a href="#" class="item-card">
+            <a href="unanalyzed-attendance-data.php" class="item-card">
                 <div class="item-icon teal"><i class="fas fa-database"></i></div>
                 <div class="item-text">UnAnalyzed Attendance Data<small>Raw attendance records</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="attendance-display.php" class="item-card">
                 <div class="item-icon blue"><i class="fas fa-desktop"></i></div>
                 <div class="item-text">Attendance Display<small>View attendance data</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="attendance-shift-report.php" class="item-card">
                 <div class="item-icon indigo"><i class="fas fa-clipboard-list"></i></div>
                 <div class="item-text">Attendance Shift Report<small>Shift based reports</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="attendance-dynamic-report.php" class="item-card">
                 <div class="item-icon purple"><i class="fas fa-chart-pie"></i></div>
                 <div class="item-text">Attendance Dynamic Report<small>Custom dynamic reports</small></div>
             </a>
@@ -223,7 +223,7 @@
     <div class="section">
         <div class="section-header"><i class="fas fa-cogs" style="margin-right:8px;font-size:12px;"></i>Attendance Processing & Summery</div>
         <div class="items-grid">
-            <a href="#" class="item-card">
+            <a href="analyze-employee-attendance.php" class="item-card">
                 <div class="item-icon orange"><i class="fas fa-user-check"></i></div>
                 <div class="item-text">Analyze Employee Attendance Single<small>Single employee analysis</small></div>
             </a>
