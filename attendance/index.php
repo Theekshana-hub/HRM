@@ -196,7 +196,7 @@
         <h1 class="page-title">Attendance Management</h1>
     </div>
 
-    <!-- Attendance Reports -->
+    
     <div class="section">
         <div class="section-header"><i class="fas fa-chart-bar" style="margin-right:8px;font-size:12px;"></i>Attendance Reports</div>
         <div class="items-grid">
@@ -219,7 +219,7 @@
         </div>
     </div>
 
-    <!-- Attendance Processing & Summery -->
+   
     <div class="section">
         <div class="section-header"><i class="fas fa-cogs" style="margin-right:8px;font-size:12px;"></i>Attendance Processing & Summery</div>
         <div class="items-grid">
@@ -234,7 +234,7 @@
         </div>
     </div>
 
-    <!-- Holiday Management -->
+    
     <div class="section">
         <div class="section-header"><i class="fas fa-umbrella-beach" style="margin-right:8px;font-size:12px;"></i>Holiday Management</div>
         <div class="items-grid">
@@ -249,7 +249,7 @@
         </div>
     </div>
 
-    <!-- Group Creation -->
+   
     <div class="section">
         <div class="section-header"><i class="fas fa-users" style="margin-right:8px;font-size:12px;"></i>Group Creation</div>
         <div class="items-grid">
@@ -268,7 +268,7 @@
         </div>
     </div>
 
-    <!-- Shift & Work Pattern Setup -->
+    
     <div class="section">
         <div class="section-header"><i class="fas fa-clock" style="margin-right:8px;font-size:12px;"></i>Shift & Work Pattern Setup</div>
         <div class="items-grid">
@@ -287,7 +287,7 @@
         </div>
     </div>
 
-    <!-- Work Pattern & Shift Assignment -->
+   
     <div class="section">
         <div class="section-header"><i class="fas fa-tasks" style="margin-right:8px;font-size:12px;"></i>Work Pattern & Shift Assignment</div>
         <div class="items-grid">
@@ -306,12 +306,12 @@
         </div>
     </div>
 
-    <!-- Advanced Roster Management -->
+    
     <div class="section">
         <div class="section-header solo"><i class="fas fa-layer-group" style="margin-right:8px;font-size:12px;"></i>Advanced Roster Management</div>
     </div>
 
-    <!-- Attendance Edit and Manual Attendance Management -->
+    
     <div class="section">
         <div class="section-header"><i class="fas fa-edit" style="margin-right:8px;font-size:12px;"></i>Attendance Edit and Manual Attendance Management</div>
         <div class="items-grid">
@@ -330,12 +330,12 @@
         </div>
     </div>
 
-    <!-- Override Attendance and recall override -->
+    
     <div class="section">
         <div class="section-header solo"><i class="fas fa-sync-alt" style="margin-right:8px;font-size:12px;"></i>Override Attendance and recall override</div>
     </div>
 
-    <!-- Leave Management -->
+  
     <div class="section">
         <div class="section-header"><i class="fas fa-plane-departure" style="margin-right:8px;font-size:12px;"></i>Leave Management</div>
         <div class="items-grid">
@@ -354,7 +354,7 @@
         </div>
     </div>
 
-    <!-- OverTime (OT) Management -->
+   
     <div class="section">
         <div class="section-header"><i class="fas fa-hourglass-half" style="margin-right:8px;font-size:12px;"></i>OverTime (OT) Management</div>
         <div class="items-grid">
@@ -369,7 +369,7 @@
         </div>
     </div>
 
-    <!-- Remaining headers -->
+    
     <div class="section">
         <div class="section-header solo"><i class="fas fa-file-invoice" style="margin-right:8px;font-size:12px;"></i>TimeSheet Process</div>
     </div>
