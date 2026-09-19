@@ -276,11 +276,11 @@
                 <div class="item-icon green"><i class="fas fa-business-time"></i></div>
                 <div class="item-text">Create Shift<small>Define work shifts</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="create-breaks.php" class="item-card">
                 <div class="item-icon orange"><i class="fas fa-coffee"></i></div>
                 <div class="item-text">Create Breaks<small>Setup break times</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="leave-shift-creation.php" class="item-card">
                 <div class="item-icon purple"><i class="fas fa-calendar-day"></i></div>
                 <div class="item-text">Leave Shift Creation<small>Create leave shifts</small></div>
             </a>
@@ -291,15 +291,15 @@
     <div class="section">
         <div class="section-header"><i class="fas fa-tasks" style="margin-right:8px;font-size:12px;"></i>Work Pattern & Shift Assignment</div>
         <div class="items-grid">
-            <a href="#" class="item-card">
+            <a href="assign-to-shift.php" class="item-card">
                 <div class="item-icon cyan"><i class="fas fa-exchange-alt"></i></div>
                 <div class="item-text">Assign To Shift<small>Assign employees to shifts</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="roster-creation.php" class="item-card">
                 <div class="item-icon blue"><i class="fas fa-clipboard-check"></i></div>
                 <div class="item-text">Roster Creation<small>Create work rosters</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="assign-roster-by-day.php" class="item-card">
                 <div class="item-icon teal"><i class="fas fa-calendar-week"></i></div>
                 <div class="item-text">Roster Assign By Day<small>Day-wise roster assign</small></div>
             </a>
@@ -315,15 +315,15 @@
     <div class="section">
         <div class="section-header"><i class="fas fa-edit" style="margin-right:8px;font-size:12px;"></i>Attendance Edit and Manual Attendance Management</div>
         <div class="items-grid">
-            <a href="#" class="item-card">
+            <a href="manual-attendance-apply.php" class="item-card">
                 <div class="item-icon slate"><i class="fas fa-hand-pointer"></i></div>
                 <div class="item-text">Manual Attendance Apply<small>Apply attendance manually</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="manual-attendance-excel.php" class="item-card">
                 <div class="item-icon sky"><i class="fas fa-file-excel"></i></div>
                 <div class="item-text">Manual Attendance Excel Upload<small>Upload via Excel</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="manual-attendance-cancel.php" class="item-card">
                 <div class="item-icon rose"><i class="fas fa-times-circle"></i></div>
                 <div class="item-text">Manual Attendance Cancel<small>Cancel manual entries</small></div>
             </a>
@@ -339,15 +339,15 @@
     <div class="section">
         <div class="section-header"><i class="fas fa-plane-departure" style="margin-right:8px;font-size:12px;"></i>Leave Management</div>
         <div class="items-grid">
-            <a href="#" class="item-card">
+            <a href="leave-balance.php" class="item-card">
                 <div class="item-icon amber"><i class="fas fa-balance-scale"></i></div>
                 <div class="item-text">Leave Balance<small>View leave balances</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="leave-cancel.php" class="item-card">
                 <div class="item-icon rose"><i class="fas fa-ban"></i></div>
                 <div class="item-text">Leave Cancel<small>Cancel leave requests</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="leave-apply.php" class="item-card">
                 <div class="item-icon pink"><i class="fas fa-hand-point-up"></i></div>
                 <div class="item-text">Leave Apply<small>Apply for leave</small></div>
             </a>
@@ -358,11 +358,11 @@
     <div class="section">
         <div class="section-header"><i class="fas fa-hourglass-half" style="margin-right:8px;font-size:12px;"></i>OverTime (OT) Management</div>
         <div class="items-grid">
-            <a href="#" class="item-card">
+            <a href="daily-ot-approvals.php" class="item-card">
                 <div class="item-icon green"><i class="fas fa-check-double"></i></div>
                 <div class="item-text">Daily OT Approvals<small>Approve daily overtime</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="ot-approvals-by-session.php" class="item-card">
                 <div class="item-icon blue"><i class="fas fa-user-clock"></i></div>
                 <div class="item-text">OT Approvals by Sessions<small>Session-wise OT approval</small></div>
             </a>
