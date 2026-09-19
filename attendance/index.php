@@ -238,11 +238,11 @@
     <div class="section">
         <div class="section-header"><i class="fas fa-umbrella-beach" style="margin-right:8px;font-size:12px;"></i>Holiday Management</div>
         <div class="items-grid">
-            <a href="#" class="item-card">
+            <a href="create-holidays.php" class="item-card">
                 <div class="item-icon rose"><i class="fas fa-calendar-plus"></i></div>
                 <div class="item-text">Holiday Registration<small>Register holidays</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="assign-to-holidays.php" class="item-card">
                 <div class="item-icon amber"><i class="fas fa-calendar-check"></i></div>
                 <div class="item-text">Assign Holidays<small>Assign holidays to staff</small></div>
             </a>
@@ -261,7 +261,7 @@
                 <div class="item-icon teal"><i class="fas fa-user-tag"></i></div>
                 <div class="item-text">Assign to Group<small>Assign employees to groups</small></div>
             </a>
-            <a href="#" class="item-card">
+            <a href="define-calendar.php" class="item-card">
                 <div class="item-icon indigo"><i class="fas fa-calendar-alt"></i></div>
                 <div class="item-text">Define Calendar<small>Define work calendars</small></div>
             </a>
@@ -272,7 +272,7 @@
     <div class="section">
         <div class="section-header"><i class="fas fa-clock" style="margin-right:8px;font-size:12px;"></i>Shift & Work Pattern Setup</div>
         <div class="items-grid">
-            <a href="#" class="item-card">
+            <a href="create-shifts.php" class="item-card">
                 <div class="item-icon green"><i class="fas fa-business-time"></i></div>
                 <div class="item-text">Create Shift<small>Define work shifts</small></div>
             </a>
