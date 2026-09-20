@@ -1,3 +1,12 @@
+<?php
+session_start();
+if (empty($_SESSION['logged_in'])) {
+    header('Location: login.php');
+    exit;
+}
+$displayName = $_SESSION['fullname'] ?? 'User';
+$initial = strtoupper(mb_substr($displayName, 0, 1));
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,13 +31,7 @@
             --shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 10px 15px -3px rgba(0,0,0,0.04);
             --shadow-hover: 0 20px 25px -5px rgba(59,130,246,0.12), 0 10px 10px -5px rgba(59,130,246,0.06);
         }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             background: var(--page-bg);
@@ -36,8 +39,6 @@
             min-height: 100vh;
             line-height: 1.5;
         }
-
-        /* ===================== NAVBAR ===================== */
         .navbar {
             background: var(--nav-bg);
             height: 58px;
@@ -49,207 +50,93 @@
             z-index: 100;
             box-shadow: 0 1px 3px rgba(0,0,0,0.25);
         }
-
-        .nav-left {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
+        .nav-left { display: flex; align-items: center; gap: 20px; }
         .brand {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #fff;
-            font-weight: 600;
-            font-size: 15px;
-            letter-spacing: 0.2px;
-            text-decoration: none;
+            display: flex; align-items: center; gap: 10px;
+            color: #fff; font-weight: 600; font-size: 15px;
+            letter-spacing: 0.2px; text-decoration: none;
         }
-
         .brand-icon {
-            width: 30px;
-            height: 30px;
+            width: 30px; height: 30px;
             background: linear-gradient(135deg, #3b82f6, #60a5fa);
-            border-radius: 8px;
-            display: grid;
-            place-items: center;
-            font-size: 13px;
-            color: white;
+            border-radius: 8px; display: grid; place-items: center;
+            font-size: 13px; color: white;
             box-shadow: 0 2px 8px rgba(59,130,246,0.4);
         }
-
-        .nav-actions {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
+        .nav-actions { display: flex; align-items: center; gap: 4px; }
         .nav-btn {
-            width: 36px;
-            height: 36px;
-            border: none;
-            background: transparent;
-            color: #94a3b8;
-            border-radius: 8px;
-            cursor: pointer;
-            display: grid;
-            place-items: center;
-            font-size: 15px;
-            transition: all 0.2s ease;
-            text-decoration: none;
+            width: 36px; height: 36px; border: none; background: transparent;
+            color: #94a3b8; border-radius: 8px; cursor: pointer;
+            display: grid; place-items: center; font-size: 15px;
+            transition: all 0.2s ease; text-decoration: none;
         }
-
-        .nav-btn:hover {
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-        }
-
+        .nav-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
         .support-dropdown {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            background: transparent;
-            border: none;
-            color: #94a3b8;
-            font-size: 13.5px;
-            font-weight: 500;
-            padding: 7px 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
+            display: flex; align-items: center; gap: 6px;
+            background: transparent; border: none; color: #94a3b8;
+            font-size: 13.5px; font-weight: 500; padding: 7px 12px;
+            border-radius: 8px; cursor: pointer; transition: all 0.2s;
         }
-
-        .support-dropdown:hover {
-            background: rgba(255,255,255,0.08);
-            color: #fff;
-        }
-
+        .support-dropdown:hover { background: rgba(255,255,255,0.08); color: #fff; }
         .search-wrap {
-            flex: 1;
-            max-width: 380px;
-            margin: 0 28px;
-            position: relative;
+            flex: 1; max-width: 380px; margin: 0 28px; position: relative;
         }
-
         .search-wrap input {
-            width: 100%;
-            height: 36px;
+            width: 100%; height: 36px;
             background: rgba(255,255,255,0.07);
             border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 9px;
-            padding: 0 14px 0 38px;
-            color: #e2e8f0;
-            font-size: 13.5px;
-            outline: none;
-            transition: all 0.2s;
+            border-radius: 9px; padding: 0 14px 0 38px;
+            color: #e2e8f0; font-size: 13.5px; outline: none; transition: all 0.2s;
         }
-
-        .search-wrap input::placeholder {
-            color: #64748b;
-        }
-
+        .search-wrap input::placeholder { color: #64748b; }
         .search-wrap input:focus {
             background: rgba(255,255,255,0.11);
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
         }
-
         .search-wrap i {
-            position: absolute;
-            left: 13px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #64748b;
-            font-size: 13px;
+            position: absolute; left: 13px; top: 50%;
+            transform: translateY(-50%); color: #64748b; font-size: 13px;
         }
-
         .nav-right {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-left: auto;
+            display: flex; align-items: center; gap: 14px; margin-left: auto;
         }
-
-        .welcome {
-            color: #94a3b8;
-            font-size: 13.5px;
-        }
-
-        .welcome strong {
-            color: #f1f5f9;
-            font-weight: 500;
-        }
-
+        .welcome { color: #94a3b8; font-size: 13.5px; }
+        .welcome strong { color: #f1f5f9; font-weight: 500; }
         .avatar {
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
+            width: 34px; height: 34px; border-radius: 50%;
             background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            display: grid;
-            place-items: center;
-            color: white;
-            font-weight: 600;
-            font-size: 13px;
-            cursor: pointer;
+            display: grid; place-items: center; color: white;
+            font-weight: 600; font-size: 13px; cursor: pointer;
             border: 2px solid rgba(255,255,255,0.15);
         }
-
-        /* ===================== MAIN ===================== */
         .container {
-            max-width: 1180px;
-            margin: 0 auto;
-            padding: 36px 24px 70px;
+            max-width: 1180px; margin: 0 auto; padding: 36px 24px 70px;
         }
-
         .section-title {
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--text-main);
-            margin-bottom: 26px;
-            letter-spacing: -0.3px;
+            font-size: 20px; font-weight: 600; color: var(--text-main);
+            margin-bottom: 26px; letter-spacing: -0.3px;
         }
-
-        /* ===================== CARDS GRID ===================== */
         .cards-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 22px;
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px;
         }
-
         .card {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            overflow: hidden;
-            cursor: pointer;
+            background: var(--card-bg); border-radius: var(--radius);
+            border: 1px solid var(--border); overflow: hidden; cursor: pointer;
             transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-            box-shadow: var(--shadow);
-            position: relative;
-            text-decoration: none;
-            color: inherit;
-            display: block;
+            box-shadow: var(--shadow); position: relative;
+            text-decoration: none; color: inherit; display: block;
         }
-
         .card:hover {
             transform: translateY(-8px);
             box-shadow: var(--shadow-hover);
             border-color: #bfdbfe;
         }
-
-        .card:active {
-            transform: translateY(-4px);
-        }
-
+        .card:active { transform: translateY(-4px); }
         .card-visual {
-            height: 168px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
+            height: 168px; display: flex; align-items: center;
+            justify-content: center; position: relative; overflow: hidden;
         }
-
         .c1 .card-visual { background: linear-gradient(160deg, #dbeafe 0%, #eff6ff 60%, #f0f9ff 100%); }
         .c2 .card-visual { background: linear-gradient(160deg, #e0f2fe 0%, #f0f9ff 100%); }
         .c3 .card-visual { background: linear-gradient(160deg, #dbeafe 0%, #eff6ff 100%); }
@@ -257,117 +144,63 @@
         .c5 .card-visual { background: linear-gradient(160deg, #e0f2fe 0%, #f0f9ff 100%); }
         .c6 .card-visual { background: linear-gradient(160deg, #dbeafe 0%, #eff6ff 100%); }
         .c7 .card-visual { background: linear-gradient(160deg, #e0f2fe 0%, #dbeafe 100%); }
-
         .card-visual svg {
-            width: 145px;
-            height: 125px;
+            width: 145px; height: 125px;
             filter: drop-shadow(0 4px 6px rgba(0,0,0,0.06));
             transition: transform 0.4s ease;
         }
-
-        .card:hover .card-visual svg {
-            transform: scale(1.05);
-        }
-
+        .card:hover .card-visual svg { transform: scale(1.05); }
         .card-bottom {
-            padding: 15px 18px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: #fff;
+            padding: 15px 18px; display: flex; align-items: center;
+            justify-content: space-between; background: #fff;
             border-top: 1px solid #f1f5f9;
         }
-
         .card-name {
-            font-size: 14.5px;
-            font-weight: 500;
-            color: var(--text-main);
+            font-size: 14.5px; font-weight: 500; color: var(--text-main);
             letter-spacing: -0.2px;
         }
-
         .dl-btn {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            border: 1.5px solid #cbd5e1;
-            background: #fff;
-            color: #64748b;
-            display: grid;
-            place-items: center;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.25s ease;
+            width: 30px; height: 30px; border-radius: 50%;
+            border: 1.5px solid #cbd5e1; background: #fff; color: #64748b;
+            display: grid; place-items: center; font-size: 12px;
+            cursor: pointer; transition: all 0.25s ease;
         }
-
         .dl-btn:hover {
-            background: var(--accent);
-            border-color: var(--accent);
-            color: white;
-            transform: scale(1.08);
+            background: var(--accent); border-color: var(--accent);
+            color: white; transform: scale(1.08);
         }
-
-        @media (max-width: 1100px) {
-            .cards-grid { grid-template-columns: repeat(3, 1fr); }
-        }
-
+        @media (max-width: 1100px) { .cards-grid { grid-template-columns: repeat(3, 1fr); } }
         @media (max-width: 820px) {
             .cards-grid { grid-template-columns: repeat(2, 1fr); }
             .search-wrap { display: none; }
             .welcome { display: none; }
         }
-
         @media (max-width: 520px) {
             .cards-grid { grid-template-columns: 1fr; gap: 16px; }
             .container { padding: 24px 16px 50px; }
             .section-title { font-size: 18px; margin-bottom: 20px; }
             .card-visual { height: 150px; }
         }
-
         .toast {
-            position: fixed;
-            bottom: 28px;
-            right: 28px;
-            background: #0f172a;
-            color: white;
-            padding: 14px 22px;
-            border-radius: 12px;
-            font-size: 14px;
-            font-weight: 500;
+            position: fixed; bottom: 28px; right: 28px;
+            background: #0f172a; color: white; padding: 14px 22px;
+            border-radius: 12px; font-size: 14px; font-weight: 500;
             box-shadow: 0 12px 30px rgba(0,0,0,0.25);
-            transform: translateY(120%);
-            opacity: 0;
+            transform: translateY(120%); opacity: 0;
             transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-            z-index: 9999;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            z-index: 9999; display: flex; align-items: center; gap: 10px;
         }
-
-        .toast.show {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        .toast i {
-            color: #60a5fa;
-        }
-
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast i { color: #60a5fa; }
         .footer {
-            text-align: center;
-            margin-top: 48px;
-            color: var(--text-muted);
-            font-size: 13px;
+            text-align: center; margin-top: 48px;
+            color: var(--text-muted); font-size: 13px;
         }
-
         @keyframes fadeUp {
             from { opacity: 0; transform: translateY(24px); }
             to { opacity: 1; transform: translateY(0); }
         }
-
-        .card {
-            animation: fadeUp 0.5s ease backwards;
-        }
-
+        .card { animation: fadeUp 0.5s ease backwards; }
         .card:nth-child(1) { animation-delay: 0.05s; }
         .card:nth-child(2) { animation-delay: 0.10s; }
         .card:nth-child(3) { animation-delay: 0.15s; }
@@ -375,23 +208,24 @@
         .card:nth-child(5) { animation-delay: 0.25s; }
         .card:nth-child(6) { animation-delay: 0.30s; }
         .card:nth-child(7) { animation-delay: 0.35s; }
+        .logout-link {
+            color: #94a3b8; font-size: 12px; text-decoration: none;
+            padding: 6px 10px; border-radius: 6px;
+        }
+        .logout-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
     </style>
 </head>
 <body>
 
     <nav class="navbar">
         <div class="nav-left">
-            <a href="smart-hris-dashboard-v2.html" class="brand">
-                <div class="brand-icon">
-                    <i class="fas fa-th-large"></i>
-                </div>
+            <a href="index.php" class="brand">
+                <div class="brand-icon"><i class="fas fa-th-large"></i></div>
                 <span>SMART HRIS <sup style="font-size:9px;opacity:0.65;font-weight:400;">™</sup></span>
             </a>
-
             <div class="nav-actions">
-                <a href="smart-hris-dashboard-v2.html" class="nav-btn" title="Home"><i class="fas fa-home"></i></a>
+                <a href="index.php" class="nav-btn" title="Home"><i class="fas fa-home"></i></a>
             </div>
-
             <button class="support-dropdown">
                 Support <i class="fas fa-chevron-down" style="font-size:10px;margin-left:2px;"></i>
             </button>
@@ -403,9 +237,10 @@
         </div>
 
         <div class="nav-right">
-            <span class="welcome">Welcome <strong>Shakila</strong></span>
+            <span class="welcome">Welcome <strong><?= htmlspecialchars($displayName) ?></strong></span>
+            <a href="logout.php" class="logout-link" title="Logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
             <button class="nav-btn"><i class="fas fa-cog"></i></button>
-            <div class="avatar" title="Profile">S</div>
+            <div class="avatar" title="Profile"><?= htmlspecialchars($initial) ?></div>
         </div>
     </nav>
 
@@ -414,7 +249,6 @@
 
         <div class="cards-grid">
 
-            <!-- 1. Manage Employee -->
             <a href="manage-employee.php" class="card c1">
                 <div class="card-visual">
                     <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -441,7 +275,6 @@
                 </div>
             </a>
 
-            <!-- 2. Enterprise -->
             <a href="enterprise/index.php" class="card c2">
                 <div class="card-visual">
                     <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -467,7 +300,6 @@
                 </div>
             </a>
 
-            <!-- 3. Attendance Management -->
             <a href="attendance/index.php" class="card c3">
                 <div class="card-visual">
                     <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -493,7 +325,6 @@
                 </div>
             </a>
 
-            <!-- 4. Salary Processing -->
             <a href="salary.html" class="card c4">
                 <div class="card-visual">
                     <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -519,7 +350,6 @@
                 </div>
             </a>
 
-            <!-- 5. Reports -->
             <a href="reports.html" class="card c5">
                 <div class="card-visual">
                     <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -544,7 +374,6 @@
                 </div>
             </a>
 
-            <!-- 6. Self Service Portal -->
             <a href="self-service.html" class="card c6">
                 <div class="card-visual">
                     <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -570,7 +399,6 @@
                 </div>
             </a>
 
-            <!-- 7. Work Flow Hierarchy -->
             <a href="workflow.html" class="card c7">
                 <div class="card-visual">
                     <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
