@@ -21,6 +21,110 @@ function calcWorkHours($r) {
     return sprintf('%02d:%02d', floor($secs / 3600), floor(($secs % 3600) / 60));
 }
 
+/*
+ * Ekama employee ekage ekama dawase thiyena rows godak thiyenam,
+ * eka row ekakata ekathu karanawa:
+ *   - dawase palamuweni in_time eka gannawa (check-in)
+ *   - dawase antima out_time eka gannawa (check-out)
+ *   - palamuweni break-in eka saha antima break-out eka gannawa
+ *   - ithin work_hours eka aluthin calculate karanawa
+ */
+function consolidateAttendance($rows) {
+    $groups = [];
+
+    foreach ($rows as $r) {
+        $emp  = $r['emp_no'] ?? '';
+        $date = $r['attendance_date'] ?? '';
+        if ($date === '') continue;
+
+        $key = $emp . '|' . $date;
+
+        if (!isset($groups[$key])) {
+            $groups[$key] = [
+                'emp_no'          => $emp,
+                'emp_name'        => $r['emp_name'] ?? '',
+                'attendance_date' => $date,
+                'checkin_date'    => null,
+                'in_time'         => null,
+                'checkout_date'   => null,
+                'out_time'        => null,
+                'breakin_date'    => null,
+                'breakin_time'    => null,
+                'breakout_date'   => null,
+                'breakout_time'   => null,
+                'status'          => $r['status'] ?? '',
+                'source'          => $r['source'] ?? '',
+            ];
+        }
+
+        $g = &$groups[$key];
+
+        if (empty($g['emp_name']) && !empty($r['emp_name'])) {
+            $g['emp_name'] = $r['emp_name'];
+        }
+
+        /* palamuweni (earliest) in_time eka */
+        if (!empty($r['in_time'])) {
+            $inDate = $r['checkin_date'] ?? $date;
+            $ts     = strtotime($inDate . ' ' . $r['in_time']);
+            $curTs  = !empty($g['in_time']) ? strtotime($g['checkin_date'] . ' ' . $g['in_time']) : null;
+            if ($ts && ($curTs === null || $ts < $curTs)) {
+                $g['checkin_date'] = $inDate;
+                $g['in_time']      = $r['in_time'];
+            }
+        }
+
+        /* antima (latest) out_time eka */
+        if (!empty($r['out_time'])) {
+            $outDate = $r['checkout_date'] ?? $date;
+            $ts      = strtotime($outDate . ' ' . $r['out_time']);
+            $curTs   = !empty($g['out_time']) ? strtotime($g['checkout_date'] . ' ' . $g['out_time']) : null;
+            if ($ts && ($curTs === null || $ts > $curTs)) {
+                $g['checkout_date'] = $outDate;
+                $g['out_time']      = $r['out_time'];
+            }
+        }
+
+        /* palamuweni break-in eka */
+        if (!empty($r['breakin_time'])) {
+            $biDate = $r['breakin_date'] ?? $date;
+            $ts     = strtotime($biDate . ' ' . $r['breakin_time']);
+            $curTs  = !empty($g['breakin_time']) ? strtotime($g['breakin_date'] . ' ' . $g['breakin_time']) : null;
+            if ($ts && ($curTs === null || $ts < $curTs)) {
+                $g['breakin_date'] = $biDate;
+                $g['breakin_time'] = $r['breakin_time'];
+            }
+        }
+
+        /* antima break-out eka */
+        if (!empty($r['breakout_time'])) {
+            $boDate = $r['breakout_date'] ?? $date;
+            $ts     = strtotime($boDate . ' ' . $r['breakout_time']);
+            $curTs  = !empty($g['breakout_time']) ? strtotime($g['breakout_date'] . ' ' . $g['breakout_time']) : null;
+            if ($ts && ($curTs === null || $ts > $curTs)) {
+                $g['breakout_date']  = $boDate;
+                $g['breakout_time']  = $r['breakout_time'];
+            }
+        }
+
+        if (empty($g['status']) && !empty($r['status'])) {
+            $g['status'] = $r['status'];
+        }
+        if (!empty($r['source']) && $g['source'] !== $r['source']) {
+            $g['source'] = $g['source'] ? $g['source'] . '+' . $r['source'] : $r['source'];
+        }
+
+        unset($g);
+    }
+
+    $out = [];
+    foreach ($groups as $g) {
+        $g['work_hours'] = calcWorkHours($g);
+        $out[] = $g;
+    }
+    return $out;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $searched = true;
     $employee  = trim($_POST['employee'] ?? '');
@@ -133,7 +237,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $results[] = $row;
     }
 
-    /* ---------- 3. Deka ekathu karala date eken sort karanawa ---------- */
+    /* ---------- 3. Ekama employee ekage ekama dawase thiyena records ekathu karala,
+     *              palamuweni in eka + antima out eka witharak thiyena widihata consolidate karanawa
+     * ---------- */
+    $results = consolidateAttendance($results);
+
+    /* ---------- 4. Date eken sort karanawa ---------- */
     usort($results, function ($a, $b) {
         $d = strcmp($b['attendance_date'] ?? '', $a['attendance_date'] ?? '');
         return $d !== 0 ? $d : strcmp($a['in_time'] ?? '', $b['in_time'] ?? '');
