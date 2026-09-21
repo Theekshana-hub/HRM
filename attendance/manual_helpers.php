@@ -246,3 +246,113 @@ function mu_ruleFor($rules, $emp_pk, $date) {
     }
     return null;
 }
+
+/* ------------------------------------------------------------------
+   OT: Manual attendance walin OT calculate karala ot_requests ekata dala
+   (Daily OT Approvals / OT Approvals by Sessions pages wala Search karaddi)
+
+   Rule eka: normal welawa 08:00 - 17:00. 17:00 passe eliyata inna welawa = OT.
+   Wenas karanna one nam yatin thiyena 4 eka wenas karanna.
+------------------------------------------------------------------- */
+if (!defined('MU_SHIFT_START'))     define('MU_SHIFT_START', '08:00:00');  // normal start
+if (!defined('MU_SHIFT_END'))       define('MU_SHIFT_END', '17:00:00');    // normal end - eka passe OT
+if (!defined('MU_OT_COUNT_EARLY'))  define('MU_OT_COUNT_EARLY', false);    // true karoth 08:00 ta issella awa welawath OT
+if (!defined('MU_OT_MIN_MINUTES'))  define('MU_OT_MIN_MINUTES', 1);        // meka wada adu OT ganne na (minutes)
+
+/* In / Out time walin OT minutes */
+function mu_otMinutes($in, $out) {
+    if (!$out) return 0;
+    $end   = strtotime('1970-01-01 ' . MU_SHIFT_END);
+    $start = strtotime('1970-01-01 ' . MU_SHIFT_START);
+    $o = strtotime('1970-01-01 ' . $out);
+    $i = $in ? strtotime('1970-01-01 ' . $in) : null;
+    if ($o === false) return 0;
+    if ($i !== null && $i !== false && $o < $i) $o += 86400;   // ratri 12 pahu wela out unoth
+    $secs = 0;
+    if ($o > $end) $secs += $o - $end;
+    if (MU_OT_COUNT_EARLY && $i && $i < $start) $secs += $start - $i;
+    $m = intdiv($secs, 60);
+    return $m >= MU_OT_MIN_MINUTES ? $m : 0;
+}
+
+function mu_syncManualOt($conn) {
+    try {
+        if (!mu_tableExists($conn, 'ot_requests')) return;
+
+        // Oni columns nathnam add karanawa
+        foreach (['ot_minutes' => 'INT DEFAULT 0', 'source' => 'VARCHAR(30) DEFAULT NULL'] as $col => $def) {
+            $c = $conn->query("SHOW COLUMNS FROM ot_requests LIKE '$col'");
+            if ($c && $c->num_rows === 0) $conn->query("ALTER TABLE ot_requests ADD COLUMN $col $def");
+        }
+
+        // employees table eke division column ekak thiyenawanam ganna
+        $divMap = [];
+        foreach (['division', 'division_name'] as $dc) {
+            $c = $conn->query("SHOW COLUMNS FROM employees LIKE '$dc'");
+            if ($c && $c->num_rows > 0) {
+                $dr = $conn->query("SELECT emp_no, `$dc` AS d FROM employees");
+                if ($dr) while ($x = $dr->fetch_assoc()) $divMap[(string)$x['emp_no']] = $x['d'];
+                break;
+            }
+        }
+
+        // Dawasakata employee ekakuge in (kalinma) saha out (passema) time - dekama sources walin
+        $map  = mu_employeeMap($conn);
+        $rows = array_merge(
+            mu_fetchApply($conn, '', '', '', 5000),
+            mu_fetchDaily($conn, $map, '', '', '', 5000)
+        );
+        $days = [];
+        foreach ($rows as $r) {
+            if (empty($r['emp_no']) || empty($r['attendance_date'])) continue;
+            $key = $r['emp_no'] . '|' . $r['attendance_date'];
+            if (!isset($days[$key])) {
+                $days[$key] = ['emp_no' => $r['emp_no'], 'emp_name' => $r['emp_name'], 'date' => $r['attendance_date'], 'in' => null, 'out' => null];
+            }
+            if (!empty($r['in_time'])  && ($days[$key]['in']  === null || $r['in_time']  < $days[$key]['in']))  $days[$key]['in']  = $r['in_time'];
+            if (!empty($r['out_time']) && ($days[$key]['out'] === null || $r['out_time'] > $days[$key]['out'])) $days[$key]['out'] = $r['out_time'];
+        }
+
+        // Kalin sync karapu manual OT rows
+        $existing = [];
+        $er = $conn->query("SELECT id, emp_no, ot_date, status FROM ot_requests WHERE source = 'Manual Attendance'");
+        if ($er) while ($x = $er->fetch_assoc()) $existing[$x['emp_no'] . '|' . $x['ot_date']] = $x;
+
+        $ins = $conn->prepare("INSERT INTO ot_requests (emp_no, emp_name, division, session_name, ot_date, ot_hours, ot_minutes, status, source)
+                               VALUES (?,?,?,?,?,?,?,'Pending','Manual Attendance')");
+        $upd = $conn->prepare("UPDATE ot_requests SET emp_name = ?, ot_hours = ?, ot_minutes = ? WHERE id = ? AND status = 'Pending'");
+        $del = $conn->prepare("DELETE FROM ot_requests WHERE id = ? AND status = 'Pending'");
+
+        foreach ($days as $key => $d) {
+            $mins = mu_otMinutes($d['in'], $d['out']);
+            $hrs  = round($mins / 60, 2);
+            $rem  = $mins % 60;
+            if ($mins > 0) {
+                if (!isset($existing[$key])) {
+                    $division = $divMap[(string)$d['emp_no']] ?? null;
+                    $session  = date('M Y', strtotime($d['date']));
+                    $ins->bind_param('sssssdi', $d['emp_no'], $d['emp_name'], $division, $session, $d['date'], $hrs, $rem);
+                    $ins->execute();
+                } elseif ($existing[$key]['status'] === 'Pending') {
+                    $id = (int)$existing[$key]['id'];
+                    $upd->bind_param('sdii', $d['emp_name'], $hrs, $rem, $id);
+                    $upd->execute();
+                }
+            } elseif (isset($existing[$key]) && $existing[$key]['status'] === 'Pending') {
+                $id = (int)$existing[$key]['id'];
+                $del->bind_param('i', $id);
+                $del->execute();
+            }
+        }
+        // Attendance record eka ain karapu nam, Pending OT eka ainwenawa
+        foreach ($existing as $key => $x) {
+            if (!isset($days[$key]) && $x['status'] === 'Pending') {
+                $id = (int)$x['id'];
+                $del->bind_param('i', $id);
+                $del->execute();
+            }
+        }
+    } catch (Throwable $ex) {
+        // OT sync ekak fail unath page eka break wenna epa
+    }
+}

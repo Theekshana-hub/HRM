@@ -1,5 +1,6 @@
 <?php
 include '../db_connect.php';
+require_once __DIR__ . '/manual_helpers.php';
 
 $conn->query("CREATE TABLE IF NOT EXISTS ot_requests (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -14,29 +15,49 @@ $conn->query("CREATE TABLE IF NOT EXISTS ot_requests (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
 
+/* File eke nama wenas unath redirect eka hariyata wada karanna */
+$self = basename($_SERVER['PHP_SELF']);
+
+/* Search filters - POST (Search button) ho GET (approve/cancel passe redirect eka) dekenma */
+$src      = ($_SERVER['REQUEST_METHOD'] === 'POST') ? $_POST : $_GET;
+$filter   = $src['filter'] ?? 'employee';
+$emp      = trim($src['employee'] ?? '');
+$division = trim($src['division'] ?? '');
+$session  = $src['session'] ?? '';
+$from     = $src['from_date'] ?? '';
+$to       = $src['to_date'] ?? '';
+
 // Approve / Cancel selected
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['approve', 'cancel'])) {
-    $ids = $_POST['ids'] ?? [];
+    $ids = array_filter(array_map('intval', $_POST['ids'] ?? []));
     $status = ($_POST['action'] === 'approve') ? 'Approved' : 'Cancelled';
     if (!empty($ids)) {
-        $ids = array_map('intval', $ids);
         $in = implode(',', $ids);
         $conn->query("UPDATE ot_requests SET status = '$status' WHERE id IN ($in)");
-        header("Location: daily-ot-approvals.php?" . strtolower($status) . "=1");
+        $affected = max(0, $conn->affected_rows);
+
+        // Search results tika thiyenna filters ekka redirect karanawa
+        $qs = http_build_query([
+            'search'    => 1,
+            'filter'    => $filter,
+            'employee'  => $emp,
+            'division'  => $division,
+            'session'   => $session,
+            'from_date' => $from,
+            'to_date'   => $to,
+            strtolower($status) => $affected,
+        ]);
+        header("Location: $self?$qs");
         exit;
     }
 }
 
 $results = [];
 $searched = false;
-$filter = $_POST['filter'] ?? 'employee';
-$emp = trim($_POST['employee'] ?? '');
-$session = $_POST['session'] ?? '';
-$from = $_POST['from_date'] ?? '';
-$to = $_POST['to_date'] ?? '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'search') {
+if (($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'search') || isset($_GET['search'])) {
     $searched = true;
+    mu_syncManualOt($conn);   // Manual attendance walin 17:00 passe OT tika ot_requests ekata ekathu karanawa
     $sql = "SELECT * FROM ot_requests WHERE 1=1";
     $params = [];
     $types = '';
@@ -46,6 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'searc
         $params[] = $like;
         $params[] = $like;
         $types .= 'ss';
+    }
+    if ($filter === 'division' && $division !== '') {
+        $sql .= " AND division = ?";
+        $params[] = $division;
+        $types .= 's';
     }
     if ($session !== '') {
         $sql .= " AND session_name = ?";
@@ -64,12 +90,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'searc
     }
     $sql .= " ORDER BY ot_date DESC LIMIT 300";
     $stmt = $conn->prepare($sql);
-    if ($params) $stmt->bind_param($types, ...$params);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) $results[] = $row;
-    $stmt->close();
+    if ($stmt) {
+        if ($params) $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) $results[] = $row;
+        $stmt->close();
+    }
 }
+
+/* Division dropdown ekata - ot_requests eke thiyena divisions */
+$divisions = [];
+$dr = $conn->query("SELECT DISTINCT division FROM ot_requests WHERE division IS NOT NULL AND division <> '' ORDER BY division");
+if ($dr) while ($d = $dr->fetch_assoc()) $divisions[] = $d['division'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -155,39 +188,38 @@ tr:nth-child(even){background:#f8fafc}
 <main class="container">
 <h1 class="page-title">Daily OT Approvals</h1>
 
-<?php if (isset($_GET['approved'])): ?><div class="alert"><i class="fas fa-check-circle"></i> Selected OT approved.</div><?php endif; ?>
-<?php if (isset($_GET['cancelled'])): ?><div class="alert red"><i class="fas fa-times-circle"></i> Selected OT cancelled.</div><?php endif; ?>
+<?php if (isset($_GET['approved'])): ?><div class="alert"><i class="fas fa-check-circle"></i> <?= (int)$_GET['approved'] ?> OT record(s) approved.</div><?php endif; ?>
+<?php if (isset($_GET['cancelled'])): ?><div class="alert red"><i class="fas fa-times-circle"></i> <?= (int)$_GET['cancelled'] ?> OT record(s) cancelled.</div><?php endif; ?>
 
 <div class="form-card">
 <form method="POST" id="searchForm">
 <input type="hidden" name="action" value="search">
 
 <div class="radio-row">
-    <label><input type="radio" name="filter" value="division" <?= $filter === 'division' ? 'checked' : '' ?>> By Division</label>
-    <label><input type="radio" name="filter" value="employee" <?= $filter !== 'division' ? 'checked' : '' ?>> By Employee</label>
+    <label><input type="radio" name="filter" value="division" <?= $filter === 'division' ? 'checked' : '' ?> onchange="toggleFilter()"> By Division</label>
+    <label><input type="radio" name="filter" value="employee" <?= $filter !== 'division' ? 'checked' : '' ?> onchange="toggleFilter()"> By Employee</label>
 </div>
 
 <div class="fields">
-    <label class="fld">Employee</label>
-    <input type="text" name="employee" value="<?= htmlspecialchars($emp) ?>" placeholder="Name or number">
+    <!-- By Employee / By Division: eka pair ekak witharai penenne -->
+    <label class="fld" id="lblEmp">Employee</label>
+    <input type="text" name="employee" id="inpEmp" value="<?= htmlspecialchars($emp) ?>" placeholder="Name or number">
+    <label class="fld" id="lblDiv" style="display:none">Division</label>
+    <select name="division" id="selDiv" style="display:none">
+        <option value="">-select-</option>
+        <?php foreach ($divisions as $d): ?>
+        <option value="<?= htmlspecialchars($d) ?>" <?= $division === $d ? 'selected' : '' ?>><?= htmlspecialchars($d) ?></option>
+        <?php endforeach; ?>
+    </select>
     <label class="fld">From Date</label>
     <input type="date" name="from_date" value="<?= htmlspecialchars($from) ?>">
 
     <label class="fld">Session</label>
     <select name="session">
         <option value="">-select-</option>
-        <option value="Jan 2026" <?= $session === 'Jan 2026' ? 'selected' : '' ?>>Jan 2026</option>
-        <option value="Feb 2026" <?= $session === 'Feb 2026' ? 'selected' : '' ?>>Feb 2026</option>
-        <option value="Mar 2026" <?= $session === 'Mar 2026' ? 'selected' : '' ?>>Mar 2026</option>
-        <option value="Apr 2026" <?= $session === 'Apr 2026' ? 'selected' : '' ?>>Apr 2026</option>
-        <option value="May 2026" <?= $session === 'May 2026' ? 'selected' : '' ?>>May 2026</option>
-        <option value="Jun 2026" <?= $session === 'Jun 2026' ? 'selected' : '' ?>>Jun 2026</option>
-        <option value="Jul 2026" <?= $session === 'Jul 2026' ? 'selected' : '' ?>>Jul 2026</option>
-        <option value="Aug 2026" <?= $session === 'Aug 2026' ? 'selected' : '' ?>>Aug 2026</option>
-        <option value="Sep 2026" <?= $session === 'Sep 2026' ? 'selected' : '' ?>>Sep 2026</option>
-        <option value="Oct 2026" <?= $session === 'Oct 2026' ? 'selected' : '' ?>>Oct 2026</option>
-        <option value="Nov 2026" <?= $session === 'Nov 2026' ? 'selected' : '' ?>>Nov 2026</option>
-        <option value="Dec 2026" <?= $session === 'Dec 2026' ? 'selected' : '' ?>>Dec 2026</option>
+        <?php foreach (['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] as $m): $s = "$m 2026"; ?>
+        <option value="<?= $s ?>" <?= $session === $s ? 'selected' : '' ?>><?= $s ?></option>
+        <?php endforeach; ?>
     </select>
     <label class="fld">To Date</label>
     <input type="date" name="to_date" value="<?= htmlspecialchars($to) ?>">
@@ -205,6 +237,13 @@ tr:nth-child(even){background:#f8fafc}
 <p class="result-count"><i class="fas fa-list"></i> <?= count($results) ?> record(s)</p>
 <form method="POST" id="actionForm">
 <input type="hidden" name="action" id="actionField" value="">
+<!-- Approve / Cancel passe same search eka ma penna filters ekka yawanawa -->
+<input type="hidden" name="filter" value="<?= htmlspecialchars($filter) ?>">
+<input type="hidden" name="employee" value="<?= htmlspecialchars($emp) ?>">
+<input type="hidden" name="division" value="<?= htmlspecialchars($division) ?>">
+<input type="hidden" name="session" value="<?= htmlspecialchars($session) ?>">
+<input type="hidden" name="from_date" value="<?= htmlspecialchars($from) ?>">
+<input type="hidden" name="to_date" value="<?= htmlspecialchars($to) ?>">
 <div class="table-wrap">
 <table>
 <thead>
@@ -221,7 +260,7 @@ tr:nth-child(even){background:#f8fafc}
 </thead>
 <tbody>
 <?php if (empty($results)): ?>
-<tr><td colspan="8" class="empty">No OT records found. Add sample data to test.</td></tr>
+<tr><td colspan="8" class="empty">No OT records found for the selected filters.</td></tr>
 <?php else: foreach ($results as $r): ?>
 <tr>
 <td><input type="checkbox" class="row-chk" name="ids[]" value="<?= (int)$r['id'] ?>"></td>
@@ -242,6 +281,15 @@ tr:nth-child(even){background:#f8fafc}
 </main>
 
 <script>
+function toggleFilter() {
+    const byDiv = document.querySelector('input[name="filter"]:checked').value === 'division';
+    document.getElementById('lblEmp').style.display = byDiv ? 'none' : '';
+    document.getElementById('inpEmp').style.display = byDiv ? 'none' : '';
+    document.getElementById('lblDiv').style.display = byDiv ? '' : 'none';
+    document.getElementById('selDiv').style.display = byDiv ? '' : 'none';
+}
+toggleFilter();
+
 function submitAction(act) {
     const form = document.getElementById('actionForm');
     if (!form) { alert('Search first'); return; }

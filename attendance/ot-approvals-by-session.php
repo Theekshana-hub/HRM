@@ -1,5 +1,6 @@
 <?php
 include '../db_connect.php';
+require_once __DIR__ . '/manual_helpers.php';
 
 $conn->query("CREATE TABLE IF NOT EXISTS ot_requests (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -15,26 +16,44 @@ $conn->query("CREATE TABLE IF NOT EXISTS ot_requests (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
 
+/* File eke nama wenas unath redirect eka hariyata wada karanna */
+$self = basename($_SERVER['PHP_SELF']);
+
+/* Search filters - POST (Search button) ho GET (approve passe redirect eka) dekenma */
+$src      = ($_SERVER['REQUEST_METHOD'] === 'POST') ? $_POST : $_GET;
+$filter   = $src['filter'] ?? 'employee';
+$session  = trim($src['session'] ?? '');
+$emp      = trim($src['employee'] ?? '');
+$division = trim($src['division'] ?? '');
+
 // Approve selected
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'approve') {
-    $ids = $_POST['ids'] ?? [];
+    $ids = array_filter(array_map('intval', $_POST['ids'] ?? []));
     if (!empty($ids)) {
-        $ids = array_map('intval', $ids);
         $in = implode(',', $ids);
         $conn->query("UPDATE ot_requests SET status = 'Approved' WHERE id IN ($in)");
-        header("Location: ot-approvals-by-session.php?approved=1");
+        $affected = max(0, $conn->affected_rows);
+
+        // Search results tika thiyenna filters ekka redirect karanawa
+        $qs = http_build_query([
+            'search'   => 1,
+            'filter'   => $filter,
+            'session'  => $session,
+            'employee' => $emp,
+            'division' => $division,
+            'approved' => $affected,
+        ]);
+        header("Location: $self?$qs");
         exit;
     }
 }
 
 $results = [];
 $searched = false;
-$filter = $_POST['filter'] ?? 'employee';
-$session = trim($_POST['session'] ?? '');
-$emp = trim($_POST['employee'] ?? '');
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'search') {
+if (($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'search') || isset($_GET['search'])) {
     $searched = true;
+    mu_syncManualOt($conn);   // Manual attendance walin 17:00 passe OT tika ot_requests ekata ekathu karanawa
     $sql = "SELECT * FROM ot_requests WHERE 1=1";
     $params = [];
     $types = '';
@@ -50,14 +69,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'searc
         $params[] = $like;
         $types .= 'ss';
     }
+    if ($filter === 'division' && $division !== '') {
+        $sql .= " AND division = ?";
+        $params[] = $division;
+        $types .= 's';
+    }
     $sql .= " ORDER BY session_name, emp_name, ot_date LIMIT 300";
     $stmt = $conn->prepare($sql);
-    if ($params) $stmt->bind_param($types, ...$params);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) $results[] = $row;
-    $stmt->close();
+    if ($stmt) {
+        if ($params) $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) $results[] = $row;
+        $stmt->close();
+    }
 }
+
+/* Division dropdown saha Session suggestions - ot_requests eke thiyena values walin */
+$divisions = [];
+$dr = $conn->query("SELECT DISTINCT division FROM ot_requests WHERE division IS NOT NULL AND division <> '' ORDER BY division");
+if ($dr) while ($d = $dr->fetch_assoc()) $divisions[] = $d['division'];
+
+$sessions = [];
+$sr = $conn->query("SELECT DISTINCT session_name FROM ot_requests WHERE session_name IS NOT NULL AND session_name <> '' ORDER BY session_name");
+if ($sr) while ($s = $sr->fetch_assoc()) $sessions[] = $s['session_name'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -93,11 +128,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--page-bg);color:#0
 
 .fields{display:grid;grid-template-columns:90px 200px;gap:12px 16px;align-items:center;max-width:320px}
 label.fld{font-size:13px;font-weight:500;color:#334155}
-input[type="text"]{
+input[type="text"],select{
     height:36px;border:1px solid #cbd5e1;border-radius:7px;padding:0 12px;
     font-size:13px;outline:none;font-family:inherit;background:#fff;width:100%
 }
-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
 
 .btn-row{display:flex;gap:10px;margin-top:20px}
 .btn{
@@ -121,6 +156,7 @@ tr:nth-child(even){background:#f8fafc}
 .badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
 .badge.pending{background:#fef3c7;color:#92400e}
 .badge.approved{background:#dcfce7;color:#166534}
+.badge.cancelled{background:#fee2e2;color:#991b1b}
 .alert{background:#dcfce7;color:#166534;padding:10px 16px;border-radius:8px;margin-bottom:14px;font-size:13px}
 .result-count{font-size:12.5px;color:#64748b;margin-bottom:8px}
 
@@ -142,23 +178,36 @@ tr:nth-child(even){background:#f8fafc}
 <main class="container">
 <h1 class="page-title">OT Approvals by Sessions</h1>
 
-<?php if (isset($_GET['approved'])): ?><div class="alert"><i class="fas fa-check-circle"></i> Selected OT approved.</div><?php endif; ?>
+<?php if (isset($_GET['approved'])): ?><div class="alert"><i class="fas fa-check-circle"></i> <?= (int)$_GET['approved'] ?> OT record(s) approved.</div><?php endif; ?>
 
 <div class="form-card">
 <form method="POST" id="searchForm">
 <input type="hidden" name="action" value="search">
 
 <div class="radio-row">
-    <label><input type="radio" name="filter" value="division" <?= $filter === 'division' ? 'checked' : '' ?>> By Division</label>
-    <label><input type="radio" name="filter" value="employee" <?= $filter !== 'division' ? 'checked' : '' ?>> By Employee</label>
+    <label><input type="radio" name="filter" value="division" <?= $filter === 'division' ? 'checked' : '' ?> onchange="toggleFilter()"> By Division</label>
+    <label><input type="radio" name="filter" value="employee" <?= $filter !== 'division' ? 'checked' : '' ?> onchange="toggleFilter()"> By Employee</label>
 </div>
 
 <div class="fields">
     <label class="fld">Session</label>
-    <input type="text" name="session" value="<?= htmlspecialchars($session) ?>" placeholder="e.g. Sep 2026">
+    <input type="text" name="session" list="sessionList" value="<?= htmlspecialchars($session) ?>" placeholder="e.g. Sep 2026">
+    <datalist id="sessionList">
+        <?php foreach ($sessions as $s): ?>
+        <option value="<?= htmlspecialchars($s) ?>">
+        <?php endforeach; ?>
+    </datalist>
 
-    <label class="fld">Employee</label>
-    <input type="text" name="employee" value="<?= htmlspecialchars($emp) ?>" placeholder="Name or number">
+    <!-- By Employee / By Division: eka pair ekak witharai penenne -->
+    <label class="fld" id="lblEmp">Employee</label>
+    <input type="text" name="employee" id="inpEmp" value="<?= htmlspecialchars($emp) ?>" placeholder="Name or number">
+    <label class="fld" id="lblDiv" style="display:none">Division</label>
+    <select name="division" id="selDiv" style="display:none">
+        <option value="">-select-</option>
+        <?php foreach ($divisions as $d): ?>
+        <option value="<?= htmlspecialchars($d) ?>" <?= $division === $d ? 'selected' : '' ?>><?= htmlspecialchars($d) ?></option>
+        <?php endforeach; ?>
+    </select>
 </div>
 
 <div class="btn-row">
@@ -174,6 +223,11 @@ tr:nth-child(even){background:#f8fafc}
 <p class="result-count"><i class="fas fa-list"></i> <?= count($results) ?> record(s)</p>
 <form method="POST" id="actionForm">
 <input type="hidden" name="action" value="approve">
+<!-- Approve passe same search eka ma penna filters ekka yawanawa -->
+<input type="hidden" name="filter" value="<?= htmlspecialchars($filter) ?>">
+<input type="hidden" name="session" value="<?= htmlspecialchars($session) ?>">
+<input type="hidden" name="employee" value="<?= htmlspecialchars($emp) ?>">
+<input type="hidden" name="division" value="<?= htmlspecialchars($division) ?>">
 <div class="table-wrap">
 <table>
 <thead>
@@ -190,10 +244,13 @@ tr:nth-child(even){background:#f8fafc}
 </thead>
 <tbody>
 <?php if (empty($results)): ?>
-<tr><td colspan="8" class="empty">No OT records found for this session.</td></tr>
+<tr><td colspan="8" class="empty">No OT records found for the selected filters.</td></tr>
 <?php else: foreach ($results as $r):
-    $h = (int)floor((float)($r['ot_hours'] ?? 0));
-    $m = (int)(($r['ot_hours'] ?? 0) * 60) % 60;
+    // ot_hours (decimal) -> H:M. Float error nathi wenna round karanawa (e.g. 1.15h = 1:09)
+    $hrs = (float)($r['ot_hours'] ?? 0);
+    $h   = (int)floor($hrs);
+    $m   = (int)round(($hrs - $h) * 60);
+    if ($m >= 60) { $h++; $m -= 60; }
     if (!empty($r['ot_minutes'])) $m = (int)$r['ot_minutes'];
     $hm = sprintf('%d:%02d', $h, $m);
 ?>
@@ -216,6 +273,15 @@ tr:nth-child(even){background:#f8fafc}
 </main>
 
 <script>
+function toggleFilter() {
+    const byDiv = document.querySelector('input[name="filter"]:checked').value === 'division';
+    document.getElementById('lblEmp').style.display = byDiv ? 'none' : '';
+    document.getElementById('inpEmp').style.display = byDiv ? 'none' : '';
+    document.getElementById('lblDiv').style.display = byDiv ? '' : 'none';
+    document.getElementById('selDiv').style.display = byDiv ? '' : 'none';
+}
+toggleFilter();
+
 function submitApprove() {
     const form = document.getElementById('actionForm');
     if (!form) { alert('Search first'); return; }
