@@ -325,7 +325,7 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
                 </div>
             </a>
 
-            <a href="salary.html" class="card c4">
+            <a href="salary/index.php" class="card c4">
                 <div class="card-visual">
                     <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <ellipse cx="68" cy="98" rx="34" ry="38" fill="#fbbf24"/>
