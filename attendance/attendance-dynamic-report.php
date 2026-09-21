@@ -1,9 +1,110 @@
 <?php
 include '../db_connect.php';
+require_once __DIR__ . '/manual_helpers.php';
 
 $results = [];
 $searched = false;
 $report_type = $_POST['report'] ?? $_GET['report'] ?? '';
+
+/* ---------- Helper functions ---------- */
+function tableExists($conn, $name) {
+    $r = $conn->query("SHOW TABLES LIKE '" . $conn->real_escape_string($name) . "'");
+    return $r && $r->num_rows > 0;
+}
+
+// Work hours calculate karanawa (break time thibunoth eka aduwenawa)
+function calcWorkHours($r) {
+    if (empty($r['checkin_date']) || empty($r['in_time']) || empty($r['checkout_date']) || empty($r['out_time'])) return '';
+    $in  = strtotime($r['checkin_date'] . ' ' . $r['in_time']);
+    $out = strtotime($r['checkout_date'] . ' ' . $r['out_time']);
+    if (!$in || !$out || $out <= $in) return '';
+    $secs = $out - $in;
+    if (!empty($r['breakin_time']) && !empty($r['breakout_time'])) {
+        $bi_date = $r['breakin_date'] ?: $r['checkin_date'];
+        $bo_date = $r['breakout_date'] ?: $bi_date;
+        $b = strtotime($bo_date . ' ' . $r['breakout_time']) - strtotime($bi_date . ' ' . $r['breakin_time']);
+        if ($b > 0 && $b < $secs) $secs -= $b;
+    }
+    return sprintf('%02d:%02d', floor($secs / 3600), floor(($secs % 3600) / 60));
+}
+
+/* Report rows ganna function - search ekatath Excel export ekatath ekama use karanawa */
+function fetchReportRows($conn, $report_type, $limit) {
+    $rows = [];
+
+    /* 1. attendance_dynamic_report table eken (kalin wage) */
+    if (tableExists($conn, 'attendance_dynamic_report')) {
+        $sql = "SELECT * FROM attendance_dynamic_report WHERE 1=1";
+        $params = [];
+        $types = '';
+        if ($report_type !== '') {
+            $sql .= " AND report_type = ?";
+            $params[] = $report_type;
+            $types .= 's';
+        }
+        $sql .= " ORDER BY attendance_date DESC, emp_no ASC LIMIT " . (int)$limit;
+        $stmt = $conn->prepare($sql);
+        if ($stmt) {
+            if ($params) $stmt->bind_param($types, ...$params);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while ($r = $res->fetch_assoc()) $rows[] = $r;
+            $stmt->close();
+        }
+    }
+
+    /* 2. manual_attendance eken (aluth).
+       Manual record ekak "present" record ekak. Late / Absent / Overtime kiyala
+       kiyanna shift details nathi nisa e reports walata ekathu karanne na. */
+    $manualReports = ['', 'Daily Attendance', 'Monthly Summary', 'Custom Report'];
+    if (in_array($report_type, $manualReports, true) && tableExists($conn, 'manual_attendance')) {
+        $hasEmpId = false;
+        $colCheck = $conn->query("SHOW COLUMNS FROM manual_attendance LIKE 'employee_id'");
+        if ($colCheck && $colCheck->num_rows > 0) $hasEmpId = true;
+        $joinOn = $hasEmpId ? "e.id = m.employee_id" : "1=0";
+
+        $msql = "SELECT e.emp_no,
+                        e.full_name AS e_name, m.employee_name AS m_name,
+                        COALESCE(m.checkin_date, m.checkout_date, m.breakin_date, m.breakout_date) AS attendance_date,
+                        m.checkin_date,  m.checkin_time  AS in_time,
+                        m.checkout_date, m.checkout_time AS out_time,
+                        m.breakin_date,  m.breakin_time,
+                        m.breakout_date, m.breakout_time
+                 FROM manual_attendance m
+                 LEFT JOIN employees e ON $joinOn
+                 ORDER BY attendance_date DESC, in_time ASC
+                 LIMIT " . (int)$limit;
+        $mres = $conn->query($msql);
+        if ($mres) {
+            while ($r = $mres->fetch_assoc()) {
+                $rows[] = [
+                    'emp_no'          => $r['emp_no'],
+                    'emp_name'        => !empty($r['e_name']) ? $r['e_name'] : $r['m_name'],
+                    'attendance_date' => $r['attendance_date'],
+                    'in_time'         => $r['in_time'],
+                    'out_time'        => $r['out_time'],
+                    'work_hours'      => calcWorkHours($r),
+                    'status'          => 'Manual',
+                    'report_type'     => 'Manual Attendance',
+                ];
+            }
+        }
+    }
+
+    /* 2b. manual_attendance_upload (Excel upload) eken - manual entries wage same reports walata */
+    if (in_array($report_type, $manualReports, true)) {
+        foreach (mu_fetchDaily($conn, mu_employeeMap($conn), '', '', '', $limit) as $r) {
+            $rows[] = $r;
+        }
+    }
+
+    /* 3. Deka ekathu karala sort karanawa */
+    usort($rows, function ($a, $b) {
+        $d = strcmp($b['attendance_date'] ?? '', $a['attendance_date'] ?? '');
+        return $d !== 0 ? $d : strcmp($a['emp_no'] ?? '', $b['emp_no'] ?? '');
+    });
+    return array_slice($rows, 0, (int)$limit);
+}
 
 // Export Excel
 if (isset($_GET['export']) && $_GET['export'] === 'excel') {
@@ -14,32 +115,16 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
 
     echo "Emp No\tEmployee Name\tDate\tIn Time\tOut Time\tWork Hours\tStatus\tReport Type\n";
 
-    $tableCheck = $conn->query("SHOW TABLES LIKE 'attendance_dynamic_report'");
-    if ($tableCheck && $tableCheck->num_rows > 0) {
-        $sql = "SELECT * FROM attendance_dynamic_report WHERE 1=1";
-        $params = [];
-        $types = '';
-        if ($report_type !== '') {
-            $sql .= " AND report_type = ?";
-            $params[] = $report_type;
-            $types .= 's';
-        }
-        $sql .= " ORDER BY attendance_date DESC LIMIT 500";
-        $stmt = $conn->prepare($sql);
-        if ($params) $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($r = $res->fetch_assoc()) {
-            echo ($r['emp_no'] ?? '') . "\t" .
-                 ($r['emp_name'] ?? '') . "\t" .
-                 ($r['attendance_date'] ?? '') . "\t" .
-                 ($r['in_time'] ?? '') . "\t" .
-                 ($r['out_time'] ?? '') . "\t" .
-                 ($r['work_hours'] ?? '') . "\t" .
-                 ($r['status'] ?? '') . "\t" .
-                 ($r['report_type'] ?? '') . "\n";
-        }
-        $stmt->close();
+    $clean = function ($v) { return str_replace(["\t", "\r", "\n"], ' ', (string)($v ?? '')); };
+    foreach (fetchReportRows($conn, $report_type, 500) as $r) {
+        echo $clean($r['emp_no'] ?? '') . "\t" .
+             $clean($r['emp_name'] ?? '') . "\t" .
+             $clean($r['attendance_date'] ?? '') . "\t" .
+             $clean($r['in_time'] ?? '') . "\t" .
+             $clean($r['out_time'] ?? '') . "\t" .
+             $clean($r['work_hours'] ?? '') . "\t" .
+             $clean($r['status'] ?? '') . "\t" .
+             $clean($r['report_type'] ?? '') . "\n";
     }
     exit;
 }
@@ -47,25 +132,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $searched = true;
     $report_type = $_POST['report'] ?? '';
-
-    $tableCheck = $conn->query("SHOW TABLES LIKE 'attendance_dynamic_report'");
-    if ($tableCheck && $tableCheck->num_rows > 0) {
-        $sql = "SELECT * FROM attendance_dynamic_report WHERE 1=1";
-        $params = [];
-        $types = '';
-        if ($report_type !== '') {
-            $sql .= " AND report_type = ?";
-            $params[] = $report_type;
-            $types .= 's';
-        }
-        $sql .= " ORDER BY attendance_date DESC, emp_no ASC LIMIT 300";
-        $stmt = $conn->prepare($sql);
-        if ($params) $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($row = $res->fetch_assoc()) $results[] = $row;
-        $stmt->close();
-    }
+    $results = fetchReportRows($conn, $report_type, 300);
 }
 
 $q_report = urlencode($report_type);

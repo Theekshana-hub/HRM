@@ -1,8 +1,25 @@
 <?php
 include '../db_connect.php';
+require_once __DIR__ . '/manual_helpers.php';
 
 $results = [];
 $searched = false;
+
+/* Work hours calculate karanawa (break time thibunoth eka aduwenawa) */
+function calcWorkHours($r) {
+    if (empty($r['checkin_date']) || empty($r['in_time']) || empty($r['checkout_date']) || empty($r['out_time'])) return '';
+    $in  = strtotime($r['checkin_date'] . ' ' . $r['in_time']);
+    $out = strtotime($r['checkout_date'] . ' ' . $r['out_time']);
+    if (!$in || !$out || $out <= $in) return '';
+    $secs = $out - $in;
+    if (!empty($r['breakin_time']) && !empty($r['breakout_time'])) {
+        $bi_date = $r['breakin_date'] ?: $r['checkin_date'];
+        $bo_date = $r['breakout_date'] ?: $bi_date;
+        $b = strtotime($bo_date . ' ' . $r['breakout_time']) - strtotime($bi_date . ' ' . $r['breakin_time']);
+        if ($b > 0 && $b < $secs) $secs -= $b;
+    }
+    return sprintf('%02d:%02d', floor($secs / 3600), floor(($secs % 3600) / 60));
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $searched = true;
@@ -10,6 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $from_date = $_POST['from_date'] ?? '';
     $to_date   = $_POST['to_date'] ?? '';
 
+    /* ---------- 1. attendance_display table eken (kalin wage) ---------- */
     $sql = "SELECT * FROM attendance_display WHERE 1=1";
     $params = [];
     $types  = '';
@@ -36,16 +54,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tableCheck = $conn->query("SHOW TABLES LIKE 'attendance_display'");
     if ($tableCheck && $tableCheck->num_rows > 0) {
         $stmt = $conn->prepare($sql);
-        if ($params) {
-            $stmt->bind_param($types, ...$params);
+        if ($stmt) {
+            if ($params) {
+                $stmt->bind_param($types, ...$params);
+            }
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while ($row = $res->fetch_assoc()) {
+                $row['source'] = 'Attendance';
+                $results[] = $row;
+            }
+            $stmt->close();
         }
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($row = $res->fetch_assoc()) {
-            $results[] = $row;
-        }
-        $stmt->close();
     }
+
+    /* ---------- 2. manual_attendance table eken (aluth) ---------- */
+    $manualCheck = $conn->query("SHOW TABLES LIKE 'manual_attendance'");
+    if ($manualCheck && $manualCheck->num_rows > 0) {
+        $hasEmpId = false;
+        $colCheck = $conn->query("SHOW COLUMNS FROM manual_attendance LIKE 'employee_id'");
+        if ($colCheck && $colCheck->num_rows > 0) $hasEmpId = true;
+
+        // employee_id thiyenawanam employees table ekath ekka join karanawa
+        $joinOn   = $hasEmpId ? "e.id = m.employee_id" : "1=0";
+        $dateExpr = "COALESCE(m.checkin_date, m.checkout_date, m.breakin_date, m.breakout_date)";
+
+        $msql = "SELECT e.emp_no,
+                        e.full_name AS e_name, m.employee_name AS m_name,
+                        $dateExpr AS attendance_date,
+                        m.checkin_date,  m.checkin_time  AS in_time,
+                        m.checkout_date, m.checkout_time AS out_time,
+                        m.breakin_date,  m.breakin_time,
+                        m.breakout_date, m.breakout_time
+                 FROM manual_attendance m
+                 LEFT JOIN employees e ON $joinOn
+                 WHERE 1=1";
+        $mparams = [];
+        $mtypes  = '';
+
+        if ($employee !== '') {
+            $msql .= " AND (e.emp_no LIKE ? OR e.full_name LIKE ? OR e.name_with_initials LIKE ? OR m.employee_name LIKE ?)";
+            $like = '%' . $employee . '%';
+            array_push($mparams, $like, $like, $like, $like);
+            $mtypes .= 'ssss';
+        }
+        if ($from_date !== '') {
+            $msql .= " AND $dateExpr >= ?";
+            $mparams[] = $from_date;
+            $mtypes .= 's';
+        }
+        if ($to_date !== '') {
+            $msql .= " AND $dateExpr <= ?";
+            $mparams[] = $to_date;
+            $mtypes .= 's';
+        }
+        $msql .= " ORDER BY attendance_date DESC, in_time ASC LIMIT 300";
+
+        $mstmt = $conn->prepare($msql);
+        if ($mstmt) {
+            if ($mparams) {
+                $mstmt->bind_param($mtypes, ...$mparams);
+            }
+            $mstmt->execute();
+            $mres = $mstmt->get_result();
+            while ($row = $mres->fetch_assoc()) {
+                $row['emp_name']   = !empty($row['e_name']) ? $row['e_name'] : $row['m_name'];
+                $row['work_hours'] = calcWorkHours($row);
+                $row['status']     = 'Manual';
+                $row['source']     = 'Manual';
+                $results[] = $row;
+            }
+            $mstmt->close();
+        }
+    }
+
+    /* ---------- 2b. manual_attendance_upload (Excel upload) eken ---------- */
+    foreach (mu_fetchDaily($conn, mu_employeeMap($conn), $employee, $from_date, $to_date, 300) as $row) {
+        $results[] = $row;
+    }
+
+    /* ---------- 3. Deka ekathu karala date eken sort karanawa ---------- */
+    usort($results, function ($a, $b) {
+        $d = strcmp($b['attendance_date'] ?? '', $a['attendance_date'] ?? '');
+        return $d !== 0 ? $d : strcmp($a['in_time'] ?? '', $b['in_time'] ?? '');
+    });
+    $results = array_slice($results, 0, 300);
 }
 
 $employees = [];
@@ -134,7 +227,7 @@ body {
     background: linear-gradient(135deg, #3b82f6, #8b5cf6);
     display: grid; place-items: center; color: #fff; font-weight: 600; font-size: 12px;
 }
-.container { max-width: 1000px; margin: 0 auto; padding: 22px 20px 50px; }
+.container { max-width: 1100px; margin: 0 auto; padding: 22px 20px 50px; }
 .page-title { font-size: 18px; font-weight: 600; margin-bottom: 22px; color: #1e293b; }
 
 .form-card {
@@ -201,7 +294,7 @@ input:focus {
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 12px;
-    overflow: hidden;
+    overflow-x: auto;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -211,6 +304,7 @@ th {
     text-align: left;
     font-weight: 500;
     font-size: 12.5px;
+    white-space: nowrap;
 }
 td {
     padding: 11px 14px;
@@ -239,6 +333,7 @@ tr:hover { background: #eff6ff; }
 .status-present { color: #16a34a; font-weight: 500; }
 .status-absent { color: #dc2626; font-weight: 500; }
 .status-late { color: #ea580c; font-weight: 500; }
+.status-manual { color: #2563eb; font-weight: 500; }
 
 @media (max-width: 700px) {
     .form-grid { grid-template-columns: 1fr; }
@@ -315,6 +410,8 @@ tr:hover { background: #eff6ff; }
                     <th>Date</th>
                     <th>In Time</th>
                     <th>Out Time</th>
+                    <th>Break In</th>
+                    <th>Break Out</th>
                     <th>Work Hours</th>
                     <th>Status</th>
                 </tr>
@@ -322,7 +419,7 @@ tr:hover { background: #eff6ff; }
             <tbody>
             <?php if (empty($results)): ?>
                 <tr>
-                    <td colspan="7">
+                    <td colspan="9">
                         <div class="empty-state">
                             <i class="fas fa-inbox"></i>
                             No attendance records found for the selected filters.
@@ -333,7 +430,10 @@ tr:hover { background: #eff6ff; }
                 <?php foreach ($results as $r): ?>
                 <?php
                     $st = strtolower($r['status'] ?? '');
-                    $cls = $st === 'present' ? 'status-present' : ($st === 'absent' ? 'status-absent' : ($st === 'late' ? 'status-late' : ''));
+                    $cls = $st === 'present' ? 'status-present'
+                         : ($st === 'absent' ? 'status-absent'
+                         : ($st === 'late' ? 'status-late'
+                         : (strpos($st, 'manual') === 0 ? 'status-manual' : '')));
                 ?>
                 <tr>
                     <td><?= htmlspecialchars($r['emp_no'] ?? '') ?></td>
@@ -341,6 +441,8 @@ tr:hover { background: #eff6ff; }
                     <td><?= htmlspecialchars($r['attendance_date'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['in_time'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['out_time'] ?? '') ?></td>
+                    <td><?= htmlspecialchars($r['breakin_time'] ?? '') ?></td>
+                    <td><?= htmlspecialchars($r['breakout_time'] ?? '') ?></td>
                     <td><?= htmlspecialchars($r['work_hours'] ?? '') ?></td>
                     <td class="<?= $cls ?>"><?= htmlspecialchars($r['status'] ?? '') ?></td>
                 </tr>

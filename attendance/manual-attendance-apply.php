@@ -1,8 +1,40 @@
 <?php
 include '../db_connect.php';
 
+/* ------------------------------------------------------------------
+   CONFIG: employees table eke NAME eka thiyena column eka methana danna.
+   (phpMyAdmin -> employees -> Structure ekෙ balanna. eg: full_name, name, emp_name)
+------------------------------------------------------------------- */
+$NAME_COL = 'full_name';
+$NO_COL   = 'emp_no';
+
+/* ---------- 1. Employee search (AJAX) ---------- */
+if (isset($_GET['search'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $term = '%' . trim($_GET['search']) . '%';
+    $sql  = "SELECT id, `$NO_COL` AS emp_no, `$NAME_COL` AS name
+             FROM employees
+             WHERE `$NAME_COL` LIKE ? OR `$NO_COL` LIKE ?
+             ORDER BY `$NAME_COL` LIMIT 10";
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        echo json_encode(['error' => $conn->error]);
+        exit;
+    }
+    $stmt->bind_param("ss", $term, $term);
+    $stmt->execute();
+    $res  = $stmt->get_result();
+    $rows = [];
+    while ($r = $res->fetch_assoc()) { $rows[] = $r; }
+    $stmt->close();
+    echo json_encode($rows);
+    exit;
+}
+
+/* ---------- 2. Table (employee_id column ekath ekka) ---------- */
 $conn->query("CREATE TABLE IF NOT EXISTS manual_attendance (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT DEFAULT NULL,
     employee_name VARCHAR(150) DEFAULT NULL,
     employee_remarks VARCHAR(255) DEFAULT NULL,
     check_mode VARCHAR(20) DEFAULT NULL,
@@ -18,8 +50,16 @@ $conn->query("CREATE TABLE IF NOT EXISTS manual_attendance (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
 
+// table eka already thibuna nam employee_id column eka add karanawa
+$chk = $conn->query("SHOW COLUMNS FROM manual_attendance LIKE 'employee_id'");
+if ($chk && $chk->num_rows === 0) {
+    $conn->query("ALTER TABLE manual_attendance ADD COLUMN employee_id INT DEFAULT NULL AFTER id");
+}
+
+/* ---------- 3. Save ---------- */
+$error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save') {
-    $emp_name   = trim($_POST['employee_name'] ?? '');
+    $emp_id     = (int)($_POST['employee_id'] ?? 0);
     $remarks    = trim($_POST['employee_remarks'] ?? '');
     $check_mode = $_POST['check_mode'] ?? '';
     $ci_date    = $_POST['checkin_date'] ?: null;
@@ -32,10 +72,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
     $bo_date    = $_POST['breakout_date'] ?: null;
     $bo_time    = $_POST['breakout_time'] ?: null;
 
-    if ($emp_name !== '') {
-        $sql = "INSERT INTO manual_attendance (employee_name, employee_remarks, check_mode, checkin_date, checkin_time, checkout_date, checkout_time, break_mode, breakin_date, breakin_time, breakout_date, breakout_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
+    // employee eka employees table eke tiyenawada kiyala check karala, name eka DB eken gannawa
+    $emp_name = null;
+    if ($emp_id > 0) {
+        $q = $conn->prepare("SELECT `$NAME_COL` FROM employees WHERE id = ?");
+        $q->bind_param("i", $emp_id);
+        $q->execute();
+        $q->bind_result($emp_name);
+        $q->fetch();
+        $q->close();
+    }
+
+    if ($emp_name === null) {
+        $error = 'Please pick an employee from the search list.';
+    } else {
+        $sql = "INSERT INTO manual_attendance (employee_id, employee_name, employee_remarks, check_mode, checkin_date, checkin_time, checkout_date, checkout_time, break_mode, breakin_date, breakin_time, breakout_date, breakout_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssssssssssss", $emp_name, $remarks, $check_mode, $ci_date, $ci_time, $co_date, $co_time, $break_mode, $bi_date, $bi_time, $bo_date, $bo_time);
+        $stmt->bind_param("issssssssssss", $emp_id, $emp_name, $remarks, $check_mode, $ci_date, $ci_time, $co_date, $co_time, $break_mode, $bi_date, $bi_time, $bo_date, $bo_time);
         $stmt->execute();
         $stmt->close();
         header("Location: manual-attendance-apply.php?success=1");
@@ -76,7 +129,15 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--page-bg);color:#0
 label.fld{font-size:13px;font-weight:500;color:#334155;min-width:130px}
 .input-search{position:relative;flex:1;max-width:320px}
 .input-search input{width:100%;height:36px;border:1px solid #f59e0b;border-radius:7px;padding:0 36px 0 12px;font-size:13px;outline:none;font-family:inherit}
+.input-search.selected input{border-color:var(--green);background:#f0fdf4}
 .input-search i{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#f59e0b}
+.input-search.selected i{color:var(--green)}
+.emp-list{display:none;position:absolute;left:0;right:0;top:40px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.1);max-height:240px;overflow-y:auto;z-index:50}
+.emp-item{padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f1f5f9}
+.emp-item:last-child{border-bottom:none}
+.emp-item:hover{background:#eff6ff}
+.emp-item small{color:#64748b;margin-right:6px}
+.emp-empty{padding:9px 12px;color:#64748b;font-size:12.5px}
 input[type="text"],input[type="date"],input[type="time"]{
     height:34px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px;
     font-size:13px;outline:none;font-family:inherit;background:#fff
@@ -103,6 +164,7 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.12)
 .btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
 
 .alert{background:#dcfce7;color:#166534;padding:10px 16px;border-radius:8px;margin-bottom:14px;font-size:13px}
+.alert.error{background:#fee2e2;color:#991b1b}
 
 @media(max-width:700px){.search-nav,.welcome{display:none}.field-row{flex-direction:column;align-items:flex-start}}
 </style>
@@ -123,18 +185,21 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.12)
 <h1 class="page-title">Apply Manual Attendance</h1>
 
 <?php if (isset($_GET['success'])): ?><div class="alert"><i class="fas fa-check-circle"></i> Manual attendance saved!</div><?php endif; ?>
+<?php if ($error !== ''): ?><div class="alert error"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error) ?></div><?php endif; ?>
 
 <div class="form-card">
 <form method="POST" id="manualForm">
 <input type="hidden" name="action" value="save">
 <input type="hidden" name="check_mode" id="check_mode" value="">
 <input type="hidden" name="break_mode" id="break_mode" value="">
+<input type="hidden" name="employee_id" id="employee_id" value="">
 
 <div class="field-row">
     <label class="fld">Employee Name :</label>
-    <div class="input-search">
-        <input type="text" name="employee_name" id="employee_name" placeholder="Search employee..." required>
-        <i class="fas fa-search"></i>
+    <div class="input-search" id="empBox">
+        <input type="text" id="employee_search" placeholder="Search by name or emp no..." autocomplete="off">
+        <i class="fas fa-search" id="empIcon"></i>
+        <div class="emp-list" id="empList"></div>
     </div>
 </div>
 
@@ -198,10 +263,80 @@ function setMode(btn) {
     if (group === 'check') document.getElementById('check_mode').value = btn.dataset.val;
     else document.getElementById('break_mode').value = btn.dataset.val;
 }
+
+/* ---------- Employee search (employees table eken) ---------- */
+const empInput = document.getElementById('employee_search');
+const empId    = document.getElementById('employee_id');
+const empList  = document.getElementById('empList');
+const empBox   = document.getElementById('empBox');
+const empIcon  = document.getElementById('empIcon');
+let timer = null;
+
+function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : s;
+    return d.innerHTML;
+}
+function markUnselected() {
+    empId.value = '';
+    empBox.classList.remove('selected');
+    empIcon.className = 'fas fa-search';
+}
+function pickEmployee(e) {
+    empId.value = e.id;
+    empInput.value = (e.emp_no ? e.emp_no + ' - ' : '') + e.name;
+    empBox.classList.add('selected');
+    empIcon.className = 'fas fa-check-circle';
+    empList.style.display = 'none';
+}
+
+empInput.addEventListener('input', function () {
+    markUnselected();                 // type karanna gaman pahaLa select eka clear wenawa
+    clearTimeout(timer);
+    const term = this.value.trim();
+    if (term.length < 1) { empList.style.display = 'none'; return; }
+    timer = setTimeout(() => {
+        fetch('manual-attendance-apply.php?search=' + encodeURIComponent(term))
+            .then(r => r.json())
+            .then(data => {
+                empList.innerHTML = '';
+                if (data.error) {
+                    empList.innerHTML = '<div class="emp-empty">DB error: ' + esc(data.error) + '</div>';
+                } else if (!data.length) {
+                    empList.innerHTML = '<div class="emp-empty">No employees found</div>';
+                } else {
+                    data.forEach(e => {
+                        const div = document.createElement('div');
+                        div.className = 'emp-item';
+                        div.innerHTML = '<small>' + esc(e.emp_no) + '</small>' + esc(e.name);
+                        div.addEventListener('mousedown', ev => { ev.preventDefault(); pickEmployee(e); });
+                        empList.appendChild(div);
+                    });
+                }
+                empList.style.display = 'block';
+            })
+            .catch(() => {
+                empList.innerHTML = '<div class="emp-empty">Search failed</div>';
+                empList.style.display = 'block';
+            });
+    }, 250);
+});
+empInput.addEventListener('blur', () => setTimeout(() => empList.style.display = 'none', 150));
+
+document.getElementById('manualForm').addEventListener('submit', function (ev) {
+    if (!empId.value) {
+        ev.preventDefault();
+        alert('Please select an employee from the search list.');
+        empInput.focus();
+    }
+});
+
 function clearForm() {
     document.getElementById('manualForm').reset();
     document.getElementById('check_mode').value = '';
     document.getElementById('break_mode').value = '';
+    markUnselected();
+    empList.style.display = 'none';
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
 }
 </script>

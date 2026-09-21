@@ -1,5 +1,6 @@
 <?php
 include '../db_connect.php';
+require_once __DIR__ . '/manual_helpers.php';
 
 $results = [];
 $searched = false;
@@ -12,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['search'])) {
     $from_time  = $_POST['from_time'] ?? $_GET['from_time'] ?? '';
     $to_time    = $_POST['to_time'] ?? $_GET['to_time'] ?? '';
 
-    // Build query for unanalyzed attendance (table may be empty until you add data)
+    /* ---------- 1. unanalyzed_attendance table eken (kalin wage) ---------- */
     $sql = "SELECT * FROM unanalyzed_attendance WHERE 1=1";
     $params = [];
     $types  = '';
@@ -46,20 +47,110 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || isset($_GET['search'])) {
     }
     $sql .= " ORDER BY attendance_date DESC, punch_time DESC LIMIT 200";
 
-    // Only query if table exists
     $tableCheck = $conn->query("SHOW TABLES LIKE 'unanalyzed_attendance'");
     if ($tableCheck && $tableCheck->num_rows > 0) {
         $stmt = $conn->prepare($sql);
-        if ($params) {
-            $stmt->bind_param($types, ...$params);
+        if ($stmt) {
+            if ($params) {
+                $stmt->bind_param($types, ...$params);
+            }
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while ($row = $res->fetch_assoc()) {
+                $results[] = $row;
+            }
+            $stmt->close();
         }
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($row = $res->fetch_assoc()) {
-            $results[] = $row;
-        }
-        $stmt->close();
     }
+
+    /* ---------- 2. manual_attendance eken (aluth) ----------
+       Manual record ekak punch 4k widihata wenas karanawa:
+       Check In, Check Out, Break In, Break Out (time eka thiyena ewa witharai) */
+    $manualCheck = $conn->query("SHOW TABLES LIKE 'manual_attendance'");
+    if ($manualCheck && $manualCheck->num_rows > 0) {
+        $hasEmpId = false;
+        $colCheck = $conn->query("SHOW COLUMNS FROM manual_attendance LIKE 'employee_id'");
+        if ($colCheck && $colCheck->num_rows > 0) $hasEmpId = true;
+        $joinOn = $hasEmpId ? "e.id = m.employee_id" : "1=0";
+
+        $parts = [
+            ['Check In',  "COALESCE(m.checkin_date, m.checkout_date)",                                  "m.checkin_time"],
+            ['Check Out', "COALESCE(m.checkout_date, m.checkin_date)",                                  "m.checkout_time"],
+            ['Break In',  "COALESCE(m.breakin_date, m.checkin_date, m.checkout_date)",                  "m.breakin_time"],
+            ['Break Out', "COALESCE(m.breakout_date, m.breakin_date, m.checkin_date, m.checkout_date)", "m.breakout_time"],
+        ];
+        $selects = [];
+        foreach ($parts as [$label, $dateExpr, $timeExpr]) {
+            $selects[] = "SELECT e.emp_no AS emp_no, e.full_name AS e_name, m.employee_name AS m_name,
+                                 $dateExpr AS attendance_date, $timeExpr AS punch_time, '$label' AS punch_type
+                          FROM manual_attendance m
+                          LEFT JOIN employees e ON $joinOn
+                          WHERE $timeExpr IS NOT NULL";
+        }
+        $msql = "SELECT * FROM (" . implode(" UNION ALL ", $selects) . ") p WHERE 1=1";
+        $mparams = [];
+        $mtypes  = '';
+
+        if ($employee !== '') {
+            $msql .= " AND (emp_no LIKE ? OR e_name LIKE ? OR m_name LIKE ?)";
+            $like = '%' . $employee . '%';
+            array_push($mparams, $like, $like, $like);
+            $mtypes .= 'sss';
+        }
+        if ($from_date !== '') {
+            $msql .= " AND attendance_date >= ?";
+            $mparams[] = $from_date;
+            $mtypes .= 's';
+        }
+        if ($to_date !== '') {
+            $msql .= " AND attendance_date <= ?";
+            $mparams[] = $to_date;
+            $mtypes .= 's';
+        }
+        if ($from_time !== '') {
+            $msql .= " AND punch_time >= ?";
+            $mparams[] = $from_time;
+            $mtypes .= 's';
+        }
+        if ($to_time !== '') {
+            $msql .= " AND punch_time <= ?";
+            $mparams[] = $to_time;
+            $mtypes .= 's';
+        }
+        $msql .= " ORDER BY attendance_date DESC, punch_time DESC LIMIT 200";
+
+        $mstmt = $conn->prepare($msql);
+        if ($mstmt) {
+            if ($mparams) {
+                $mstmt->bind_param($mtypes, ...$mparams);
+            }
+            $mstmt->execute();
+            $mres = $mstmt->get_result();
+            while ($row = $mres->fetch_assoc()) {
+                $results[] = [
+                    'emp_no'          => $row['emp_no'],
+                    'emp_name'        => !empty($row['e_name']) ? $row['e_name'] : $row['m_name'],
+                    'attendance_date' => $row['attendance_date'],
+                    'punch_time'      => $row['punch_time'],
+                    'device_location' => 'Manual Entry - ' . $row['punch_type'],
+                    'status'          => 'Pending',
+                ];
+            }
+            $mstmt->close();
+        }
+    }
+
+    /* ---------- 2b. manual_attendance_upload (Excel upload) eken ---------- */
+    foreach (mu_fetchPunches($conn, mu_employeeMap($conn), $employee, $from_date, $to_date, $from_time, $to_time, 200) as $row) {
+        $results[] = $row;
+    }
+
+    /* ---------- 3. Deka ekathu karala sort karanawa ---------- */
+    usort($results, function ($a, $b) {
+        $d = strcmp($b['attendance_date'] ?? '', $a['attendance_date'] ?? '');
+        return $d !== 0 ? $d : strcmp($b['punch_time'] ?? '', $a['punch_time'] ?? '');
+    });
+    $results = array_slice($results, 0, 200);
 }
 
 // Employees for autocomplete-style dropdown (from employees table if exists)
