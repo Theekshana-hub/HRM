@@ -136,3 +136,67 @@ function mu_fetchPunches($conn, $map, $employee = '', $from_date = '', $to_date 
     }
     return $rows;
 }
+
+/* ------------------------------------------------------------------
+   Apply Manual Attendance form eken (manual_attendance table) save karapu ewa
+   filter ekka - Attendance Shift Report page ekata
+------------------------------------------------------------------- */
+function mu_workHours($r) {
+    if (empty($r['checkin_date']) || empty($r['in_time']) || empty($r['checkout_date']) || empty($r['out_time'])) return '';
+    $in  = strtotime($r['checkin_date'] . ' ' . $r['in_time']);
+    $out = strtotime($r['checkout_date'] . ' ' . $r['out_time']);
+    if (!$in || !$out || $out <= $in) return '';
+    $secs = $out - $in;
+    if (!empty($r['breakin_time']) && !empty($r['breakout_time'])) {
+        $bi_date = $r['breakin_date'] ?: $r['checkin_date'];
+        $bo_date = $r['breakout_date'] ?: $bi_date;
+        $b = strtotime($bo_date . ' ' . $r['breakout_time']) - strtotime($bi_date . ' ' . $r['breakin_time']);
+        if ($b > 0 && $b < $secs) $secs -= $b;
+    }
+    return sprintf('%02d:%02d', floor($secs / 3600), floor(($secs % 3600) / 60));
+}
+
+function mu_fetchApply($conn, $employee = '', $from_date = '', $to_date = '', $limit = 300) {
+    if (!mu_tableExists($conn, 'manual_attendance') || !mu_tableExists($conn, 'employees')) return [];
+
+    $hasEmpId = false;
+    $c = $conn->query("SHOW COLUMNS FROM manual_attendance LIKE 'employee_id'");
+    if ($c && $c->num_rows > 0) $hasEmpId = true;
+    $joinOn   = $hasEmpId ? "e.id = m.employee_id" : "1=0";
+    $dateExpr = "COALESCE(m.checkin_date, m.checkout_date, m.breakin_date, m.breakout_date)";
+
+    $sql = "SELECT e.emp_no, e.full_name AS e_name, m.employee_name AS m_name,
+                   $dateExpr AS attendance_date,
+                   m.checkin_date,  m.checkin_time  AS in_time,
+                   m.checkout_date, m.checkout_time AS out_time,
+                   m.breakin_date,  m.breakin_time,
+                   m.breakout_date, m.breakout_time
+            FROM manual_attendance m
+            LEFT JOIN employees e ON $joinOn
+            WHERE 1=1";
+    $types = ''; $params = [];
+    if ($employee !== '') {
+        $sql .= " AND (e.emp_no LIKE ? OR e.full_name LIKE ? OR e.name_with_initials LIKE ? OR m.employee_name LIKE ?)";
+        $like = '%' . $employee . '%';
+        array_push($params, $like, $like, $like, $like);
+        $types .= 'ssss';
+    }
+    if ($from_date !== '') { $sql .= " AND $dateExpr >= ?"; $params[] = $from_date; $types .= 's'; }
+    if ($to_date !== '')   { $sql .= " AND $dateExpr <= ?"; $params[] = $to_date;   $types .= 's'; }
+    $sql .= " ORDER BY attendance_date DESC, in_time ASC LIMIT " . (int)$limit;
+
+    $rows = [];
+    foreach (mu_run($conn, $sql, $types, $params) as $r) {
+        $rows[] = [
+            'emp_no'          => $r['emp_no'],
+            'emp_name'        => !empty($r['e_name']) ? $r['e_name'] : $r['m_name'],
+            'attendance_date' => $r['attendance_date'],
+            'in_time'         => $r['in_time'],
+            'out_time'        => $r['out_time'],
+            'work_hours'      => mu_workHours($r),
+            'status'          => 'Manual',
+            'report_type'     => 'Manual Attendance',
+        ];
+    }
+    return $rows;
+}

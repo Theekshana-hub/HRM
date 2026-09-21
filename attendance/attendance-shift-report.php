@@ -1,8 +1,58 @@
 <?php
 include '../db_connect.php';
+require_once __DIR__ . '/manual_helpers.php';
 
 $results = [];
 $searched = false;
+
+/* Rows ganna function - search ekatath Excel export ekatath ekama use karanawa */
+function fetchShiftRows($conn, $report_type, $att_group, $emp_name, $from_date, $to_date, $limit) {
+    $rows = [];
+
+    /* 1. attendance_shift_report table eken (kalin wage) */
+    if (mu_tableExists($conn, 'attendance_shift_report')) {
+        $sql = "SELECT * FROM attendance_shift_report WHERE 1=1";
+        $params = [];
+        $types = '';
+        if ($att_group !== '') { $sql .= " AND attendance_group = ?"; $params[] = $att_group; $types .= 's'; }
+        if ($emp_name !== '') { $sql .= " AND (emp_name LIKE ? OR emp_no LIKE ?)"; $like = '%'.$emp_name.'%'; $params[] = $like; $params[] = $like; $types .= 'ss'; }
+        if ($from_date !== '') { $sql .= " AND attendance_date >= ?"; $params[] = $from_date; $types .= 's'; }
+        if ($to_date !== '') { $sql .= " AND attendance_date <= ?"; $params[] = $to_date; $types .= 's'; }
+        $sql .= " ORDER BY attendance_date DESC, emp_no ASC LIMIT " . (int)$limit;
+        $rows = mu_run($conn, $sql, $types, $params);
+    }
+
+    /* 2. Manual attendance (Apply form + Excel upload).
+       Manual records walata shift / group nathi nisa:
+         - Attendance Group ekak select karala nam ewa ekathu karanne na
+         - "Late Arrival Report" ekatath ekathu karanne na (shift time nathuwa late kiyala kiyanna ba) */
+    if ($att_group === '' && $report_type !== 'Late') {
+        $map = mu_employeeMap($conn);
+        $manual = array_merge(
+            mu_fetchApply($conn, $emp_name, $from_date, $to_date, $limit),
+            mu_fetchDaily($conn, $map, $emp_name, $from_date, $to_date, $limit)
+        );
+        foreach ($manual as $m) {
+            $rows[] = [
+                'emp_no'           => $m['emp_no'],
+                'emp_name'         => $m['emp_name'],
+                'attendance_date'  => $m['attendance_date'],
+                'shift_name'       => '-',
+                'in_time'          => $m['in_time'],
+                'out_time'         => $m['out_time'],
+                'status'           => $m['status'],
+                'attendance_group' => '-',
+            ];
+        }
+    }
+
+    /* 3. Deka ekathu karala sort karanawa */
+    usort($rows, function ($a, $b) {
+        $d = strcmp((string)($b['attendance_date'] ?? ''), (string)($a['attendance_date'] ?? ''));
+        return $d !== 0 ? $d : strcmp((string)($a['emp_no'] ?? ''), (string)($b['emp_no'] ?? ''));
+    });
+    return array_slice($rows, 0, (int)$limit);
+}
 
 // Export to Excel
 if (isset($_GET['export']) && $_GET['export'] === 'excel') {
@@ -19,31 +69,16 @@ if (isset($_GET['export']) && $_GET['export'] === 'excel') {
 
     echo "Emp No\tEmployee Name\tDate\tShift\tIn Time\tOut Time\tStatus\tGroup\n";
 
-    $tableCheck = $conn->query("SHOW TABLES LIKE 'attendance_shift_report'");
-    if ($tableCheck && $tableCheck->num_rows > 0) {
-        $sql = "SELECT * FROM attendance_shift_report WHERE 1=1";
-        $params = [];
-        $types = '';
-        if ($att_group !== '') { $sql .= " AND attendance_group = ?"; $params[] = $att_group; $types .= 's'; }
-        if ($emp_name !== '') { $sql .= " AND (emp_name LIKE ? OR emp_no LIKE ?)"; $like = '%'.$emp_name.'%'; $params[] = $like; $params[] = $like; $types .= 'ss'; }
-        if ($from_date !== '') { $sql .= " AND attendance_date >= ?"; $params[] = $from_date; $types .= 's'; }
-        if ($to_date !== '') { $sql .= " AND attendance_date <= ?"; $params[] = $to_date; $types .= 's'; }
-        $sql .= " ORDER BY attendance_date DESC LIMIT 500";
-        $stmt = $conn->prepare($sql);
-        if ($params) $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($r = $res->fetch_assoc()) {
-            echo ($r['emp_no'] ?? '') . "\t" .
-                 ($r['emp_name'] ?? '') . "\t" .
-                 ($r['attendance_date'] ?? '') . "\t" .
-                 ($r['shift_name'] ?? '') . "\t" .
-                 ($r['in_time'] ?? '') . "\t" .
-                 ($r['out_time'] ?? '') . "\t" .
-                 ($r['status'] ?? '') . "\t" .
-                 ($r['attendance_group'] ?? '') . "\n";
-        }
-        $stmt->close();
+    $clean = function ($v) { return str_replace(["\t", "\r", "\n"], ' ', (string)($v ?? '')); };
+    foreach (fetchShiftRows($conn, $report_type, $att_group, $emp_name, $from_date, $to_date, 500) as $r) {
+        echo $clean($r['emp_no'] ?? '') . "\t" .
+             $clean($r['emp_name'] ?? '') . "\t" .
+             $clean($r['attendance_date'] ?? '') . "\t" .
+             $clean($r['shift_name'] ?? '') . "\t" .
+             $clean($r['in_time'] ?? '') . "\t" .
+             $clean($r['out_time'] ?? '') . "\t" .
+             $clean($r['status'] ?? '') . "\t" .
+             $clean($r['attendance_group'] ?? '') . "\n";
     }
     exit;
 }
@@ -56,23 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $from_date   = $_POST['from_date'] ?? '';
     $to_date     = $_POST['to_date'] ?? '';
 
-    $tableCheck = $conn->query("SHOW TABLES LIKE 'attendance_shift_report'");
-    if ($tableCheck && $tableCheck->num_rows > 0) {
-        $sql = "SELECT * FROM attendance_shift_report WHERE 1=1";
-        $params = [];
-        $types = '';
-        if ($att_group !== '') { $sql .= " AND attendance_group = ?"; $params[] = $att_group; $types .= 's'; }
-        if ($emp_name !== '') { $sql .= " AND (emp_name LIKE ? OR emp_no LIKE ?)"; $like = '%'.$emp_name.'%'; $params[] = $like; $params[] = $like; $types .= 'ss'; }
-        if ($from_date !== '') { $sql .= " AND attendance_date >= ?"; $params[] = $from_date; $types .= 's'; }
-        if ($to_date !== '') { $sql .= " AND attendance_date <= ?"; $params[] = $to_date; $types .= 's'; }
-        $sql .= " ORDER BY attendance_date DESC, emp_no ASC LIMIT 300";
-        $stmt = $conn->prepare($sql);
-        if ($params) $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($row = $res->fetch_assoc()) $results[] = $row;
-        $stmt->close();
-    }
+    $results = fetchShiftRows($conn, $report_type, $att_group, $emp_name, $from_date, $to_date, 300);
 }
 
 // Persist filter values for export link
