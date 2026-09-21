@@ -15,7 +15,7 @@ function mu_employeeMap($conn) {
     $map = [];
     if (!mu_tableExists($conn, 'employees')) return $map;
     try {
-        $r = $conn->query("SELECT emp_no, full_name, name_with_initials FROM employees");
+        $r = $conn->query("SELECT id, emp_no, full_name, name_with_initials FROM employees");
         if ($r) while ($e = $r->fetch_assoc()) $map[(string)$e['emp_no']] = $e;
     } catch (Throwable $ex) {}
     return $map;
@@ -103,6 +103,7 @@ function mu_fetchDaily($conn, $map, $employee = '', $from_date = '', $to_date = 
             'attendance_date' => $r['attendance_date'],
             'in_time'         => $r['in_time'],
             'out_time'        => $r['out_time'],
+            'emp_pk'          => $map[(string)$r['emp_no']]['id'] ?? null,
             'work_hours'      => mu_hours($r['in_time'], $r['out_time']),
             'status'          => 'Manual (Upload)',
             'report_type'     => 'Manual Upload',
@@ -165,7 +166,7 @@ function mu_fetchApply($conn, $employee = '', $from_date = '', $to_date = '', $l
     $joinOn   = $hasEmpId ? "e.id = m.employee_id" : "1=0";
     $dateExpr = "COALESCE(m.checkin_date, m.checkout_date, m.breakin_date, m.breakout_date)";
 
-    $sql = "SELECT e.emp_no, e.full_name AS e_name, m.employee_name AS m_name,
+    $sql = "SELECT e.id AS emp_pk, e.emp_no, e.full_name AS e_name, m.employee_name AS m_name,
                    $dateExpr AS attendance_date,
                    m.checkin_date,  m.checkin_time  AS in_time,
                    m.checkout_date, m.checkout_time AS out_time,
@@ -193,10 +194,55 @@ function mu_fetchApply($conn, $employee = '', $from_date = '', $to_date = '', $l
             'attendance_date' => $r['attendance_date'],
             'in_time'         => $r['in_time'],
             'out_time'        => $r['out_time'],
+            'emp_pk'          => $r['emp_pk'],
             'work_hours'      => mu_workHours($r),
             'status'          => 'Manual',
             'report_type'     => 'Manual Attendance',
         ];
     }
     return $rows;
+}
+
+/* ------------------------------------------------------------------
+   employee_attendance_rules table eken Attendance Group / Work Schedule
+   (Attendance Shift Report page ekata)
+------------------------------------------------------------------- */
+
+/* Attendance Group dropdown ekata - rules table eke thiyena distinct groups */
+function mu_attendanceGroups($conn) {
+    $groups = [];
+    if (!mu_tableExists($conn, 'employee_attendance_rules')) return $groups;
+    try {
+        $r = $conn->query("SELECT DISTINCT attendance_group FROM employee_attendance_rules
+                           WHERE attendance_group IS NOT NULL AND attendance_group <> ''
+                           ORDER BY attendance_group");
+        if ($r) while ($x = $r->fetch_assoc()) $groups[] = $x['attendance_group'];
+    } catch (Throwable $ex) {}
+    return $groups;
+}
+
+/* Okkoma rules ekapara load karanawa: employee_id => [rules, aluthma from_date udin] */
+function mu_loadRules($conn) {
+    $rules = [];
+    if (!mu_tableExists($conn, 'employee_attendance_rules')) return $rules;
+    try {
+        $r = $conn->query("SELECT employee_id, attendance_group, work_schedule, from_date, to_date, is_permanent
+                           FROM employee_attendance_rules
+                           ORDER BY from_date DESC");
+        if ($r) while ($x = $r->fetch_assoc()) $rules[(int)$x['employee_id']][] = $x;
+    } catch (Throwable $ex) {}
+    return $rules;
+}
+
+/* Employee ekakuta, dawasakata adala rule eka (from_date <= date, permanent nathnam to_date >= date) */
+function mu_ruleFor($rules, $emp_pk, $date) {
+    if (!$emp_pk || empty($rules[(int)$emp_pk])) return null;
+    foreach ($rules[(int)$emp_pk] as $r) {
+        if ($date) {
+            if (!empty($r['from_date']) && $r['from_date'] > $date) continue;
+            if (empty($r['is_permanent']) && !empty($r['to_date']) && $r['to_date'] < $date) continue;
+        }
+        return $r;
+    }
+    return null;
 }

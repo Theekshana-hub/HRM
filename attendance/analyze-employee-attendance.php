@@ -1,5 +1,6 @@
 <?php
 include '../db_connect.php';
+require_once __DIR__ . '/manual_helpers.php';
 
 $results = [];
 $processed = false;
@@ -11,8 +12,9 @@ $to_date = $_POST['to_date'] ?? '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'process') {
     $processed = true;
-    $tableCheck = $conn->query("SHOW TABLES LIKE 'attendance_analysis'");
-    if ($tableCheck && $tableCheck->num_rows > 0) {
+
+    /* ---------- 1. attendance_analysis table eken (kalin wage) ---------- */
+    if (mu_tableExists($conn, 'attendance_analysis')) {
         $sql = "SELECT * FROM attendance_analysis WHERE 1=1";
         $params = [];
         $types = '';
@@ -34,13 +36,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'proce
             $types .= 's';
         }
         $sql .= " ORDER BY attendance_date ASC LIMIT 300";
-        $stmt = $conn->prepare($sql);
-        if ($params) $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($row = $res->fetch_assoc()) $results[] = $row;
-        $stmt->close();
+        $results = mu_run($conn, $sql, $types, $params);
     }
+
+    /* ---------- 2. Manual attendance (Apply form + Excel upload) ---------- */
+    $map = mu_employeeMap($conn);
+    $manual = array_merge(
+        mu_fetchApply($conn, $selected_emp, $from_date, $to_date, 300),
+        mu_fetchDaily($conn, $map, $selected_emp, $from_date, $to_date, 300)
+    );
+    foreach ($manual as $m) {
+        // Employee select karapu nisa emp_no eka exact match wenna one (emp_no thiyena rows walata)
+        if ($selected_emp !== '' && !empty($m['emp_no']) && (string)$m['emp_no'] !== $selected_emp) continue;
+
+        $results[] = [
+            'emp_no'          => $m['emp_no'],
+            'emp_name'        => $m['emp_name'],
+            'attendance_date' => $m['attendance_date'],
+            'in_time'         => $m['in_time'],
+            'out_time'        => $m['out_time'],
+            'work_hours'      => $m['work_hours'],
+            'late_minutes'    => '-',          // shift time nathi nisa manual records walata late calculate karanna ba
+            'status'          => $m['status'],
+        ];
+    }
+
+    /* ---------- 3. Deka ekathu karala date eken (paran idan aluth) sort karanawa ---------- */
+    usort($results, function ($a, $b) {
+        $d = strcmp((string)($a['attendance_date'] ?? ''), (string)($b['attendance_date'] ?? ''));
+        return $d !== 0 ? $d : strcmp((string)($a['in_time'] ?? ''), (string)($b['in_time'] ?? ''));
+    });
+    $results = array_slice($results, 0, 300);
 }
 
 // Employee list for select modal / datalist

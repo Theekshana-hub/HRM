@@ -4,6 +4,7 @@ require_once __DIR__ . '/manual_helpers.php';
 
 $results = [];
 $searched = false;
+$groups = mu_attendanceGroups($conn);   // Attendance Group dropdown eka employee_attendance_rules eken
 
 /* Rows ganna function - search ekatath Excel export ekatath ekama use karanawa */
 function fetchShiftRows($conn, $report_type, $att_group, $emp_name, $from_date, $to_date, $limit) {
