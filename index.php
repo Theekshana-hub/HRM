@@ -1,142 +1,152 @@
 <?php
 session_start();
-if (empty($_SESSION['logged_in'])) {
-    header('Location: login.php');
+
+/* ------------------------------------------------------------------
+   SMART HRIS - single entry file
+   Flow:  index.php            -> Selection page (always first)
+          index.php?page=login -> Login (HR Panel click karama)
+          index.php?page=panel -> HR Panel (login unama pamanai)
+          index.php?action=logout -> logout, selection ekata
+------------------------------------------------------------------- */
+
+// ---- Logout ----
+if (($_GET['action'] ?? '') === 'logout') {
+    $_SESSION = [];
+    session_destroy();
+    header('Location: index.php');
     exit;
 }
+
+// ---- Login (POST) ----
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'login') {
+    $username = trim($_POST['username'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    // TODO: methana oyage real check eka danna (database / login.php logic eka).
+    // Dan demo widiyata users array ekak thiyenne.
+    $users = [
+        'admin' => ['password' => 'admin123', 'fullname' => 'Administrator'],
+    ];
+
+    if (isset($users[$username]) && $users[$username]['password'] === $password) {
+        session_regenerate_id(true);
+        $_SESSION['logged_in'] = true;
+        $_SESSION['fullname']  = $users[$username]['fullname'];
+        header('Location: index.php?page=panel');
+        exit;
+    }
+    $error = 'Invalid username or password';
+    $_GET['page'] = 'login';
+}
+
+// ---- Page routing ----
+$page = $_GET['page'] ?? 'select';
+$loggedIn = !empty($_SESSION['logged_in']);
+
+if ($page === 'panel' && !$loggedIn) $page = 'login';
+if ($page === 'login' && $loggedIn)  { header('Location: index.php?page=panel'); exit; }
+if (!in_array($page, ['select', 'login', 'panel'], true)) $page = 'select';
+
 $displayName = $_SESSION['fullname'] ?? 'User';
 $initial = strtoupper(mb_substr($displayName, 0, 1));
+
+// HR Panel link eka: login wela nam panel ekata, nathnam login ekata
+$hrLink = $loggedIn ? 'index.php?page=panel' : 'index.php?page=login';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMART HRIS™ | HR Panel</title>
+    <title>SMART HRIS™ <?= $page === 'panel' ? '| HR Panel' : ($page === 'login' ? '| Login' : '| Selection') ?></title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+<?php if ($page === 'select'): ?>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #fff; color: #212529; text-align: center; min-height: 100vh; }
+        .logo { margin: 18px auto 0; height: 110px; }
+        .logo img { height: 110px; }
+        .logo-text { font-size: 54px; font-weight: 700; letter-spacing: -1px;
+            background: linear-gradient(90deg, #dc2626, #1e3a8a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        h1 { font-size: 40px; font-weight: 500; margin-top: 50px; }
+        hr { width: 465px; max-width: 90%; border: 0; border-top: 1px solid #d5d9de; margin: 18px auto 50px; }
+        .sel-grid { display: flex; justify-content: center; gap: 90px; flex-wrap: wrap; padding: 0 20px; }
+        .sel-card { width: 442px; max-width: 100%; height: 374px; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;
+            box-shadow: 0 6px 14px rgba(0,0,0,0.12); display: flex; flex-direction: column; align-items: center;
+            justify-content: space-between; padding: 24px 10px 12px; text-decoration: none; transition: transform .25s, box-shadow .25s; }
+        .sel-card:hover { transform: translateY(-6px); box-shadow: 0 14px 26px rgba(59,130,246,0.2); }
+        .sel-card i { font-size: 140px; color: #38bdf8; margin-top: 30px; }
+        .sel-card span { color: #0d6efd; font-size: 24px; text-decoration: underline; }
+        .copy { margin-top: 40px; font-size: 17px; line-height: 2.2; padding-bottom: 30px; }
+    </style>
+<?php elseif ($page === 'login'): ?>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Poppins', sans-serif; min-height: 100vh; background: #fff; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+        .left { background: #4f86f2; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; border-top-right-radius: 55% 100%; border-bottom-right-radius: 38% 100%; }
+        .left .tagline { color: #fff; margin-top: 18px; font-size: 18px; }
+        .left i { font-size: 190px; color: rgba(255,255,255,0.85); margin-top: 20px; }
+        .brand-text { font-size: 60px; font-weight: 600; background: #fff; padding: 4px 22px; border-radius: 10px;
+            background-image: linear-gradient(90deg, #dc2626, #1e3a8a); -webkit-background-clip: text; background-clip: text; color: transparent; background-color: transparent; }
+        .right { display: flex; align-items: center; justify-content: center; padding: 30px; }
+        .login-box { width: 450px; max-width: 100%; text-align: center; }
+        .user-ic { width: 116px; height: 116px; border-radius: 50%; background: #e8ecff; display: grid; place-items: center; margin: 0 auto 8px; }
+        .user-ic i { font-size: 56px; color: #3b8bf6; }
+        .login-box h2 { font-size: 22px; font-weight: 600; margin-bottom: 22px; }
+        .field { text-align: left; border-bottom: 1px solid #ddd; padding: 14px 0 6px 44px; margin-bottom: 4px; }
+        .field label { display: block; color: #999; font-size: 14px; font-weight: 500; }
+        .field input { width: 100%; border: 0; outline: 0; font-size: 16px; font-family: inherit; padding: 6px 0; background: transparent; }
+        .field:focus-within { border-bottom-color: #2dd4a8; }
+        .forgot { text-align: right; font-size: 14px; color: #999; margin: 10px 0 18px; font-weight: 500; }
+        .btn-login { width: 100%; height: 62px; border: 0; border-radius: 31px; cursor: pointer; color: #fff; font-size: 20px; font-weight: 600;
+            font-family: inherit; background: linear-gradient(90deg, #135b8a, #148bc7); transition: transform .2s, box-shadow .2s; }
+        .btn-login:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(19,91,138,0.3); }
+        .copy { font-size: 12px; font-weight: 600; margin-top: 22px; }
+        .err { background: #fee2e2; color: #b91c1c; padding: 10px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 12px; }
+        .back { display: inline-block; margin-top: 14px; font-size: 13px; color: #64748b; text-decoration: none; }
+        .back:hover { color: #0d6efd; }
+        @media (max-width: 820px) { body { grid-template-columns: 1fr; } .left { display: none; } }
+    </style>
+<?php else: /* panel */ ?>
     <style>
         :root {
-            --nav-bg: #111827;
-            --card-bg: #ffffff;
-            --page-bg: #f1f5f9;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --accent: #3b82f6;
-            --accent-soft: #dbeafe;
-            --border: #e2e8f0;
-            --radius: 18px;
+            --nav-bg: #111827; --card-bg: #ffffff; --page-bg: #f1f5f9; --text-main: #0f172a; --text-muted: #64748b;
+            --accent: #3b82f6; --accent-soft: #dbeafe; --border: #e2e8f0; --radius: 18px;
             --shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 10px 15px -3px rgba(0,0,0,0.04);
             --shadow-hover: 0 20px 25px -5px rgba(59,130,246,0.12), 0 10px 10px -5px rgba(59,130,246,0.06);
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background: var(--page-bg);
-            color: var(--text-main);
-            min-height: 100vh;
-            line-height: 1.5;
-        }
-        .navbar {
-            background: var(--nav-bg);
-            height: 58px;
-            display: flex;
-            align-items: center;
-            padding: 0 22px;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-        }
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--page-bg); color: var(--text-main); min-height: 100vh; line-height: 1.5; }
+        .navbar { background: var(--nav-bg); height: 58px; display: flex; align-items: center; padding: 0 22px; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
         .nav-left { display: flex; align-items: center; gap: 20px; }
-        .brand {
-            display: flex; align-items: center; gap: 10px;
-            color: #fff; font-weight: 600; font-size: 15px;
-            letter-spacing: 0.2px; text-decoration: none;
-        }
-        .brand-icon {
-            width: 30px; height: 30px;
-            background: linear-gradient(135deg, #3b82f6, #60a5fa);
-            border-radius: 8px; display: grid; place-items: center;
-            font-size: 13px; color: white;
-            box-shadow: 0 2px 8px rgba(59,130,246,0.4);
-        }
+        .brand { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 600; font-size: 15px; letter-spacing: 0.2px; text-decoration: none; }
+        .brand-icon { width: 30px; height: 30px; background: linear-gradient(135deg, #3b82f6, #60a5fa); border-radius: 8px; display: grid; place-items: center; font-size: 13px; color: white; box-shadow: 0 2px 8px rgba(59,130,246,0.4); }
         .nav-actions { display: flex; align-items: center; gap: 4px; }
-        .nav-btn {
-            width: 36px; height: 36px; border: none; background: transparent;
-            color: #94a3b8; border-radius: 8px; cursor: pointer;
-            display: grid; place-items: center; font-size: 15px;
-            transition: all 0.2s ease; text-decoration: none;
-        }
+        .nav-btn { width: 36px; height: 36px; border: none; background: transparent; color: #94a3b8; border-radius: 8px; cursor: pointer; display: grid; place-items: center; font-size: 15px; transition: all 0.2s ease; text-decoration: none; }
         .nav-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
-        .support-dropdown {
-            display: flex; align-items: center; gap: 6px;
-            background: transparent; border: none; color: #94a3b8;
-            font-size: 13.5px; font-weight: 500; padding: 7px 12px;
-            border-radius: 8px; cursor: pointer; transition: all 0.2s;
-        }
+        .support-dropdown { display: flex; align-items: center; gap: 6px; background: transparent; border: none; color: #94a3b8; font-size: 13.5px; font-weight: 500; padding: 7px 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
         .support-dropdown:hover { background: rgba(255,255,255,0.08); color: #fff; }
-        .search-wrap {
-            flex: 1; max-width: 380px; margin: 0 28px; position: relative;
-        }
-        .search-wrap input {
-            width: 100%; height: 36px;
-            background: rgba(255,255,255,0.07);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 9px; padding: 0 14px 0 38px;
-            color: #e2e8f0; font-size: 13.5px; outline: none; transition: all 0.2s;
-        }
+        .search-wrap { flex: 1; max-width: 380px; margin: 0 28px; position: relative; }
+        .search-wrap input { width: 100%; height: 36px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); border-radius: 9px; padding: 0 14px 0 38px; color: #e2e8f0; font-size: 13.5px; outline: none; transition: all 0.2s; }
         .search-wrap input::placeholder { color: #64748b; }
-        .search-wrap input:focus {
-            background: rgba(255,255,255,0.11);
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
-        }
-        .search-wrap i {
-            position: absolute; left: 13px; top: 50%;
-            transform: translateY(-50%); color: #64748b; font-size: 13px;
-        }
-        .nav-right {
-            display: flex; align-items: center; gap: 14px; margin-left: auto;
-        }
+        .search-wrap input:focus { background: rgba(255,255,255,0.11); border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+        .search-wrap i { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #64748b; font-size: 13px; }
+        .nav-right { display: flex; align-items: center; gap: 14px; margin-left: auto; }
         .welcome { color: #94a3b8; font-size: 13.5px; }
         .welcome strong { color: #f1f5f9; font-weight: 500; }
-        .avatar {
-            width: 34px; height: 34px; border-radius: 50%;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            display: grid; place-items: center; color: white;
-            font-weight: 600; font-size: 13px; cursor: pointer;
-            border: 2px solid rgba(255,255,255,0.15);
-        }
-        .container {
-            max-width: 1180px; margin: 0 auto; padding: 36px 24px 70px;
-        }
-        .section-title {
-            font-size: 20px; font-weight: 600; color: var(--text-main);
-            margin-bottom: 26px; letter-spacing: -0.3px;
-        }
-        .cards-grid {
-            display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px;
-        }
-        .card {
-            background: var(--card-bg); border-radius: var(--radius);
-            border: 1px solid var(--border); overflow: hidden; cursor: pointer;
-            transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-            box-shadow: var(--shadow); position: relative;
-            text-decoration: none; color: inherit; display: block;
-        }
-        .card:hover {
-            transform: translateY(-8px);
-            box-shadow: var(--shadow-hover);
-            border-color: #bfdbfe;
-        }
+        .avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6, #8b5cf6); display: grid; place-items: center; color: white; font-weight: 600; font-size: 13px; cursor: pointer; border: 2px solid rgba(255,255,255,0.15); }
+        .container { max-width: 1180px; margin: 0 auto; padding: 36px 24px 70px; }
+        .section-title { font-size: 20px; font-weight: 600; color: var(--text-main); margin-bottom: 26px; letter-spacing: -0.3px; }
+        .cards-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; }
+        .card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; cursor: pointer; transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1); box-shadow: var(--shadow); position: relative; text-decoration: none; color: inherit; display: block; }
+        .card:hover { transform: translateY(-8px); box-shadow: var(--shadow-hover); border-color: #bfdbfe; }
         .card:active { transform: translateY(-4px); }
-        .card-visual {
-            height: 168px; display: flex; align-items: center;
-            justify-content: center; position: relative; overflow: hidden;
-        }
+        .card-visual { height: 168px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
         .c1 .card-visual { background: linear-gradient(160deg, #dbeafe 0%, #eff6ff 60%, #f0f9ff 100%); }
         .c2 .card-visual { background: linear-gradient(160deg, #e0f2fe 0%, #f0f9ff 100%); }
         .c3 .card-visual { background: linear-gradient(160deg, #dbeafe 0%, #eff6ff 100%); }
@@ -144,79 +154,98 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
         .c5 .card-visual { background: linear-gradient(160deg, #e0f2fe 0%, #f0f9ff 100%); }
         .c6 .card-visual { background: linear-gradient(160deg, #dbeafe 0%, #eff6ff 100%); }
         .c7 .card-visual { background: linear-gradient(160deg, #e0f2fe 0%, #dbeafe 100%); }
-        .card-visual svg {
-            width: 145px; height: 125px;
-            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.06));
-            transition: transform 0.4s ease;
-        }
+        .card-visual svg { width: 145px; height: 125px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.06)); transition: transform 0.4s ease; }
         .card:hover .card-visual svg { transform: scale(1.05); }
-        .card-bottom {
-            padding: 15px 18px; display: flex; align-items: center;
-            justify-content: space-between; background: #fff;
-            border-top: 1px solid #f1f5f9;
-        }
-        .card-name {
-            font-size: 14.5px; font-weight: 500; color: var(--text-main);
-            letter-spacing: -0.2px;
-        }
-        .dl-btn {
-            width: 30px; height: 30px; border-radius: 50%;
-            border: 1.5px solid #cbd5e1; background: #fff; color: #64748b;
-            display: grid; place-items: center; font-size: 12px;
-            cursor: pointer; transition: all 0.25s ease;
-        }
-        .dl-btn:hover {
-            background: var(--accent); border-color: var(--accent);
-            color: white; transform: scale(1.08);
-        }
+        .card-bottom { padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; background: #fff; border-top: 1px solid #f1f5f9; }
+        .card-name { font-size: 14.5px; font-weight: 500; color: var(--text-main); letter-spacing: -0.2px; }
+        .dl-btn { width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid #cbd5e1; background: #fff; color: #64748b; display: grid; place-items: center; font-size: 12px; cursor: pointer; transition: all 0.25s ease; }
+        .dl-btn:hover { background: var(--accent); border-color: var(--accent); color: white; transform: scale(1.08); }
         @media (max-width: 1100px) { .cards-grid { grid-template-columns: repeat(3, 1fr); } }
-        @media (max-width: 820px) {
-            .cards-grid { grid-template-columns: repeat(2, 1fr); }
-            .search-wrap { display: none; }
-            .welcome { display: none; }
-        }
-        @media (max-width: 520px) {
-            .cards-grid { grid-template-columns: 1fr; gap: 16px; }
-            .container { padding: 24px 16px 50px; }
-            .section-title { font-size: 18px; margin-bottom: 20px; }
-            .card-visual { height: 150px; }
-        }
-        .toast {
-            position: fixed; bottom: 28px; right: 28px;
-            background: #0f172a; color: white; padding: 14px 22px;
-            border-radius: 12px; font-size: 14px; font-weight: 500;
-            box-shadow: 0 12px 30px rgba(0,0,0,0.25);
-            transform: translateY(120%); opacity: 0;
-            transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-            z-index: 9999; display: flex; align-items: center; gap: 10px;
-        }
+        @media (max-width: 820px) { .cards-grid { grid-template-columns: repeat(2, 1fr); } .search-wrap { display: none; } .welcome { display: none; } }
+        @media (max-width: 520px) { .cards-grid { grid-template-columns: 1fr; gap: 16px; } .container { padding: 24px 16px 50px; } .section-title { font-size: 18px; margin-bottom: 20px; } .card-visual { height: 150px; } }
+        .toast { position: fixed; bottom: 28px; right: 28px; background: #0f172a; color: white; padding: 14px 22px; border-radius: 12px; font-size: 14px; font-weight: 500; box-shadow: 0 12px 30px rgba(0,0,0,0.25); transform: translateY(120%); opacity: 0; transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1); z-index: 9999; display: flex; align-items: center; gap: 10px; }
         .toast.show { transform: translateY(0); opacity: 1; }
         .toast i { color: #60a5fa; }
-        .footer {
-            text-align: center; margin-top: 48px;
-            color: var(--text-muted); font-size: 13px;
-        }
-        @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(24px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        .footer { text-align: center; margin-top: 48px; color: var(--text-muted); font-size: 13px; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
         .card { animation: fadeUp 0.5s ease backwards; }
-        .card:nth-child(1) { animation-delay: 0.05s; }
-        .card:nth-child(2) { animation-delay: 0.10s; }
-        .card:nth-child(3) { animation-delay: 0.15s; }
-        .card:nth-child(4) { animation-delay: 0.20s; }
-        .card:nth-child(5) { animation-delay: 0.25s; }
-        .card:nth-child(6) { animation-delay: 0.30s; }
+        .card:nth-child(1) { animation-delay: 0.05s; } .card:nth-child(2) { animation-delay: 0.10s; }
+        .card:nth-child(3) { animation-delay: 0.15s; } .card:nth-child(4) { animation-delay: 0.20s; }
+        .card:nth-child(5) { animation-delay: 0.25s; } .card:nth-child(6) { animation-delay: 0.30s; }
         .card:nth-child(7) { animation-delay: 0.35s; }
-        .logout-link {
-            color: #94a3b8; font-size: 12px; text-decoration: none;
-            padding: 6px 10px; border-radius: 6px;
-        }
+        .logout-link { color: #94a3b8; font-size: 12px; text-decoration: none; padding: 6px 10px; border-radius: 6px; }
         .logout-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
     </style>
+<?php endif; ?>
 </head>
 <body>
 
+<?php if ($page === 'select'): ?>
+    <!-- ================= 1. SELECTION PAGE ================= -->
+    <div class="logo">
+        <!-- Logo image thiyenawanam: <img src="images/logo.png" alt="Smart HRIS"> -->
+        <div class="logo-text">Smart HRIS</div>
+    </div>
+
+    <h1>Selection</h1>
+    <hr>
+
+    <div class="sel-grid">
+        <a href="dashboard/index.php" class="sel-card">
+            <i class="fas fa-chart-pie"></i>
+            <span>Dashboard</span>
+        </a>
+        <a href="self-service.html" class="sel-card">
+            <i class="fas fa-user-graduate"></i>
+            <span>Self Service Portal</span>
+        </a>
+        <a href="<?= $hrLink ?>" class="sel-card">
+            <i class="fas fa-calendar-check"></i>
+            <span>HR Panel</span>
+        </a>
+    </div>
+
+    <div class="copy">
+        <p>Copyrights FIDA Global (Pvt) Ltd. v2024</p>
+        <p>Build:202204011822</p>
+    </div>
+
+<?php elseif ($page === 'login'): ?>
+    <!-- ================= 2. LOGIN PAGE ================= -->
+    <div class="left">
+        <div class="brand-text">Smart HRIS</div>
+        <div class="tagline">Choice of the Smart Generation</div>
+        <i class="fas fa-users-viewfinder"></i>
+    </div>
+
+    <div class="right">
+        <form class="login-box" method="post" action="index.php?page=login" autocomplete="off">
+            <input type="hidden" name="do" value="login">
+            <div class="user-ic"><i class="fas fa-user"></i></div>
+            <h2>Welcome to HR Panel</h2>
+
+            <?php if ($error): ?>
+                <div class="err"><?= htmlspecialchars($error) ?></div>
+            <?php endif; ?>
+
+            <div class="field">
+                <label for="u">Username</label>
+                <input type="text" id="u" name="username" required autofocus>
+            </div>
+            <div class="field">
+                <label for="p">Password</label>
+                <input type="password" id="p" name="password" required>
+            </div>
+            <div class="forgot">Forgot Password?</div>
+
+            <button type="submit" class="btn-login">LOGIN</button>
+            <p class="copy">Copyrights FIDA Global (Pvt) Ltd. 2024 version 16</p>
+            <a href="index.php" class="back"><i class="fas fa-arrow-left"></i> Back to selection</a>
+        </form>
+    </div>
+
+<?php else: ?>
+    <!-- ================= 3. HR PANEL ================= -->
     <nav class="navbar">
         <div class="nav-left">
             <a href="index.php" class="brand">
@@ -238,7 +267,7 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
 
         <div class="nav-right">
             <span class="welcome">Welcome <strong><?= htmlspecialchars($displayName) ?></strong></span>
-            <a href="logout.php" class="logout-link" title="Logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            <a href="index.php?action=logout" class="logout-link" title="Logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
             <button class="nav-btn"><i class="fas fa-cog"></i></button>
             <div class="avatar" title="Profile"><?= htmlspecialchars($initial) ?></div>
         </div>
@@ -269,9 +298,7 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
                 </div>
                 <div class="card-bottom">
                     <span class="card-name">Manage Employee</span>
-                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
+                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')"><i class="fas fa-arrow-down"></i></button>
                 </div>
             </a>
 
@@ -294,9 +321,7 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
                 </div>
                 <div class="card-bottom">
                     <span class="card-name">Enterprise</span>
-                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
+                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')"><i class="fas fa-arrow-down"></i></button>
                 </div>
             </a>
 
@@ -319,9 +344,7 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
                 </div>
                 <div class="card-bottom">
                     <span class="card-name">Attendance Management</span>
-                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
+                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')"><i class="fas fa-arrow-down"></i></button>
                 </div>
             </a>
 
@@ -344,9 +367,7 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
                 </div>
                 <div class="card-bottom">
                     <span class="card-name">Salary Processing</span>
-                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
+                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')"><i class="fas fa-arrow-down"></i></button>
                 </div>
             </a>
 
@@ -368,9 +389,7 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
                 </div>
                 <div class="card-bottom">
                     <span class="card-name">Reports</span>
-                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
+                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')"><i class="fas fa-arrow-down"></i></button>
                 </div>
             </a>
 
@@ -393,9 +412,7 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
                 </div>
                 <div class="card-bottom">
                     <span class="card-name">Self Service Portal</span>
-                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
+                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')"><i class="fas fa-arrow-down"></i></button>
                 </div>
             </a>
 
@@ -420,9 +437,7 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
                 </div>
                 <div class="card-bottom">
                     <span class="card-name">Work Flow Hierarchy</span>
-                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')">
-                        <i class="fas fa-arrow-down"></i>
-                    </button>
+                    <button class="dl-btn" onclick="event.preventDefault(); event.stopPropagation(); toast('Download started')"><i class="fas fa-arrow-down"></i></button>
                 </div>
             </a>
 
@@ -444,5 +459,7 @@ $initial = strtoupper(mb_substr($displayName, 0, 1));
             setTimeout(() => el.classList.remove('show'), 2400);
         }
     </script>
+<?php endif; ?>
+
 </body>
 </html>
